@@ -1,33 +1,141 @@
-.App {
-  text-align: center;
+body {
+  background-image: url("hero-bg.jpg");
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  background-size: cover;
+  line-height: 1;
 }
 
-.App-logo {
-  animation: App-logo-spin infinite 20s linear;
-  height: 40vmin;
-  pointer-events: none;
+label {
+  margin-bottom: 0;
 }
 
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
+label,
+h1,
+h2,
+h3,
+h4,
+h5,
+th,
+td,
+#BackToMenu,
+button,
+.btn-dark,
+a {
   color: white;
+  text-shadow: -1px 0 black, 0 1px black, 1px 0 black, 0 -1px black;
 }
 
-.App-link {
-  color: #61dafb;
+table,
+.form-row,
+input,
+textarea,
+.card-login,
+.card-register,
+.level-depth-separation {
+  background-color: rgba(0, 0, 0, 0.5) !important;
+  color: white !important;
+  text-shadow: -1px 0 black, 0 1px black, 1px 0 black, 0 -1px black;
 }
 
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.alert-failed {
+  text-align: center;
+  background-color: rgba(89, 95, 90, 0.5);
+}
+
+.paragraph {
+  width: 350px;
+  margin: auto;
+  margin-top: 5px;
+  border-width: 3px;
+  border-style: solid;
+  border-color: black;
+  background-color: rgba(0, 0, 0, 0.8) !important;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  padding: 0;
+}
+
+.paragraph-type {
+  background-color: black;
+  line-height: 1.5;
+}
+
+.paragraph-type:hover,
+.save-paragraph:hover {
+  background-color: rgba(211, 223, 213, 0.5);
+}
+
+.active {
+  background-color: rgba(0, 129, 22, 0.966);
+}
+
+li {
+  text-align: left;
+  display: block;
+}
+
+.victory {
+  border-bottom-color: rgba(9, 199, 3, 0.747);
+  border-right-color: rgba(9, 199, 3, 0.747);
+}
+
+.suddendeath {
+  border-bottom-color: rgba(214, 45, 74, 0.747);
+  border-right-color: rgba(214, 45, 74, 0.747);
+}
+
+.paragraph-link,
+.paragraph-outcome {
+  margin: 0;
+  font-size: 10px;
+  padding-left: 10px;
+  cursor: pointer;
+}
+
+.paragraph-link:hover,
+.paragraph-outcome:hover,
+.monster-selection:hover,
+.pointer-selection:hover {
+  background-color: rgba(112, 112, 112, 0.966);
+}
+
+.paragraph-link.linked,
+.monster-selection.selected,
+.pointer-selection.selected {
+  background-color: rgba(112, 112, 112, 0.966);
+}
+
+.linked-to-previous {
+  border-top-color: rgba(255, 255, 255, 1);
+  border-left-color: rgba(255, 255, 255, 1);
+}
+
+.linked-to-next {
+  border-bottom-color: rgba(255, 255, 255, 1);
+  border-right-color: rgba(255, 255, 255, 1);
+}
+
+.label-upload {
+  font-style: italic;
+  font-size: 0.8rem;
+}
+
+.paragraph-link.hide,
+.card-img-top-monster.hide {
+  display: none;
+}
+
+.card-img-top-pointer,
+.card-img-top-monster {
+  position: absolute;
+  left: 0;
+  top: 0; /* set these so Chrome doesn't return 'auto' from getComputedStyle */
+}
+
+#savequest {
+  background-color: rgba(0, 0, 0, 0.966);
 }
