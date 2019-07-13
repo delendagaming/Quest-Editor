@@ -139,3 +139,7 @@ li {
 #savequest {
   background-color: rgba(0, 0, 0, 0.966);
 }
+
+.label-parameter {
+  margin-bottom: 4px;
+}

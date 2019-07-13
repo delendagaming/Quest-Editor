@@ -2,6 +2,8 @@ import React, { Component } from "react";
 import { Link } from "react-router-dom";
 import PropTypes from "prop-types";
 import { firestoreConnect } from "react-redux-firebase";
+import { compose } from "redux";
+import { connect } from "react-redux";
 
 import curday from "./CurrentDay";
 import QuestTemplate from "./questbuilder/QuestTemplate";
@@ -27,9 +29,12 @@ class NewQuest extends Component {
     });
     const newQuest = this.state;
     const { firestore } = this.props;
-    firestore
-      .add({ collection: "QuestsInProgress" }, newQuest)
-      .then(() => this.props.history.push("/questeditor/builder/new"));
+    const result = await firestore.add(
+      { collection: "QuestsInProgress" },
+      newQuest
+    );
+
+    this.props.history.push(`/questeditor/questbuilder/${result.id}`);
   };
 
   render() {
@@ -67,7 +72,9 @@ class NewQuest extends Component {
             style={{ paddingLeft: "10px", paddingRight: "10px" }}
           >
             <div className="form-group col-md-6">
-              <label htmlFor="QuestTitle">Title</label>
+              <label className="label-parameter" htmlFor="QuestTitle">
+                Title
+              </label>
               <input
                 type="text"
                 className="form-control"
@@ -80,7 +87,9 @@ class NewQuest extends Component {
               />
             </div>
             <div className="form-group col-md-6">
-              <label htmlFor="QuestTags">Tags</label>
+              <label className="label-parameter" htmlFor="QuestTags">
+                Tags
+              </label>
               <input
                 type="text"
                 className="form-control"
@@ -98,7 +107,9 @@ class NewQuest extends Component {
             style={{ paddingLeft: "10px", paddingRight: "10px" }}
           >
             <div className="form-group col-md-6">
-              <label htmlFor="QuestPrice">Price</label>
+              <label className="label-parameter" htmlFor="QuestPrice">
+                Price
+              </label>
               <input
                 type="text"
                 className="form-control"
@@ -111,7 +122,9 @@ class NewQuest extends Component {
               />
             </div>
             <div className="form-group col-md-6">
-              <label htmlFor="QuestLevel">Level</label>
+              <label className="label-parameter" htmlFor="QuestLevel">
+                Level
+              </label>
               <input
                 type="text"
                 className="form-control"
@@ -129,7 +142,9 @@ class NewQuest extends Component {
             style={{ paddingLeft: "10px", paddingRight: "10px" }}
           >
             <div className="form-group col-md-6">
-              <label htmlFor="QuestLink">Link</label>
+              <label className="label-parameter" htmlFor="QuestLink">
+                Link
+              </label>
               <input
                 type="text"
                 className="form-control"
@@ -141,7 +156,9 @@ class NewQuest extends Component {
               />
             </div>
             <div className="form-group col-md-6">
-              <label htmlFor="QuestLocation">Location</label>
+              <label className="label-parameter" htmlFor="QuestLocation">
+                Location
+              </label>
               <input
                 type="text"
                 className="form-control"
@@ -162,7 +179,9 @@ class NewQuest extends Component {
               paddingBottom: "10px"
             }}
           >
-            <label htmlFor="Text">Summary</label>
+            <label className="label-parameter" htmlFor="Text">
+              Summary
+            </label>
             <textarea
               type="text"
               className="form-control"
@@ -201,4 +220,9 @@ NewQuest.propTypes = {
   firestore: PropTypes.object.isRequired
 };
 
-export default firestoreConnect()(NewQuest);
+export default compose(
+  firestoreConnect([{ collection: "QuestsInProgress" }]),
+  connect((state, props) => ({
+    questsInProgress: state.firestore.ordered.QuestsInProgress
+  }))
+)(NewQuest);

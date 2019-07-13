@@ -7,10 +7,14 @@ import {
   SET_TO_VICTORY,
   SET_PARAGRAPH_TYPE,
   SET_PARAGRAPH_LINK_STATUS,
-  SET_TO_FINALBOSS
+  SET_TO_FINALBOSS,
+  SYNC_REGISTERS_IN_REDUX,
+  CLEAR_QUEST_DATA,
+  SET_TO_GLOBAL_SAVING
 } from "../actions/types";
 
 const initialState = {
+  isGlobalSaving: false,
   paragraphNumberTotal: 1,
   paragraphRegister: [
     {
@@ -93,15 +97,23 @@ export default function(state = initialState, action) {
       };
 
     case ADD_PARAGRAPH_LINK:
-      let UpdatedParagraphRegisterWithLinks = state.paragraphRegister;
+      // shallow copies to circumvent object extensibility issues
 
-      let childParagraphAdd = UpdatedParagraphRegisterWithLinks.find(
-        paragraph =>
-          paragraph.depthNumber ===
-            action.paragraphLinkToAddInLinkRegister.depthNumber &&
-          paragraph.paragraphNumber ===
-            action.paragraphLinkToAddInLinkRegister.paragraphNumber
-      );
+      let UpdatedParagraphRegisterWithLinks = [...state.paragraphRegister];
+
+      let childParagraphAdd = {
+        ...UpdatedParagraphRegisterWithLinks.find(
+          paragraph =>
+            paragraph.depthNumber ===
+              action.paragraphLinkToAddInLinkRegister.depthNumber &&
+            paragraph.paragraphNumber ===
+              action.paragraphLinkToAddInLinkRegister.paragraphNumber
+        )
+      };
+      childParagraphAdd.previousParagraphs = [
+        ...childParagraphAdd.previousParagraphs
+      ];
+
       childParagraphAdd.hasLinkToPreviousParagraph = true;
       childParagraphAdd.previousParagraphs.push({
         depthNumber:
@@ -111,7 +123,39 @@ export default function(state = initialState, action) {
             .paragraphNumberOfLinkedParagraph
       });
 
-      let parentParagraphAdd = UpdatedParagraphRegisterWithLinks.find(
+      let originalChildIndex = UpdatedParagraphRegisterWithLinks.findIndex(
+        paragraph =>
+          paragraph.depthNumber ===
+            action.paragraphLinkToAddInLinkRegister.depthNumber &&
+          paragraph.paragraphNumber ===
+            action.paragraphLinkToAddInLinkRegister.paragraphNumber
+      );
+
+      UpdatedParagraphRegisterWithLinks[originalChildIndex] = childParagraphAdd;
+
+      let parentParagraphAdd = {
+        ...UpdatedParagraphRegisterWithLinks.find(
+          paragraph =>
+            paragraph.depthNumber ===
+              action.paragraphLinkToAddInLinkRegister
+                .depthNumberOfLinkedParagraph &&
+            paragraph.paragraphNumber ===
+              action.paragraphLinkToAddInLinkRegister
+                .paragraphNumberOfLinkedParagraph
+        )
+      };
+
+      parentParagraphAdd.nextParagraphs = [
+        ...parentParagraphAdd.nextParagraphs
+      ];
+
+      parentParagraphAdd.hasLinkToNextParagraph = true;
+      parentParagraphAdd.nextParagraphs.push({
+        depthNumber: action.paragraphLinkToAddInLinkRegister.depthNumber,
+        paragraphNumber: action.paragraphLinkToAddInLinkRegister.paragraphNumber
+      });
+
+      let originalParentIndex = UpdatedParagraphRegisterWithLinks.findIndex(
         paragraph =>
           paragraph.depthNumber ===
             action.paragraphLinkToAddInLinkRegister
@@ -120,11 +164,10 @@ export default function(state = initialState, action) {
             action.paragraphLinkToAddInLinkRegister
               .paragraphNumberOfLinkedParagraph
       );
-      parentParagraphAdd.hasLinkToNextParagraph = true;
-      parentParagraphAdd.nextParagraphs.push({
-        depthNumber: action.paragraphLinkToAddInLinkRegister.depthNumber,
-        paragraphNumber: action.paragraphLinkToAddInLinkRegister.paragraphNumber
-      });
+
+      UpdatedParagraphRegisterWithLinks[
+        originalParentIndex
+      ] = parentParagraphAdd;
 
       return {
         ...state,
@@ -203,7 +246,14 @@ export default function(state = initialState, action) {
             action.paragraphToSetToSuddenDeathInRegister.paragraphNumber
       );
       // setting its sudden death value to true
-      paragraphToUpdateWithSuddenDeath.paragraphSubTypes.isSuddenDeath = !paragraphToUpdateWithSuddenDeath.isSuddenDeath;
+
+      paragraphToUpdateWithSuddenDeath.paragraphSubTypes = {
+        ...paragraphToUpdateWithSuddenDeath.paragraphSubTypes
+      };
+
+      paragraphToUpdateWithSuddenDeath.paragraphSubTypes.isSuddenDeath = !paragraphToUpdateWithSuddenDeath
+        .paragraphSubTypes.isSuddenDeath;
+
       // replacing the paragraph object in the original register with the updated paragraph object
       let updatedRegisterWithSuddenDeath = state.paragraphRegister;
       updatedRegisterWithSuddenDeath[
@@ -229,8 +279,13 @@ export default function(state = initialState, action) {
           paragraph.paragraphNumber ===
             action.paragraphToSetToVictoryInRegister.paragraphNumber
       );
-      // toggle its sudden death value
-      paragraphToUpdateWithVictory.paragraphSubTypes.isVictory = !paragraphToUpdateWithVictory.isVictory;
+      // toggle its isVictory value
+      paragraphToUpdateWithVictory.paragraphSubTypes = {
+        ...paragraphToUpdateWithVictory.paragraphSubTypes
+      };
+
+      paragraphToUpdateWithVictory.paragraphSubTypes.isVictory = !paragraphToUpdateWithVictory
+        .paragraphSubTypes.isVictory;
       // replacing the paragraph object in the original register with the updated paragraph object
       let updatedRegisterWithVictory = state.paragraphRegister;
       updatedRegisterWithVictory[
@@ -258,6 +313,9 @@ export default function(state = initialState, action) {
             action.paragraphToSetToFinalBossInRegister.paragraphNumber
       );
       // setting its final boss combat value to true
+      paragraphToUpdateWithFinalBoss.paragraphSubTypes = {
+        ...paragraphToUpdateWithFinalBoss.paragraphSubTypes
+      };
       paragraphToUpdateWithFinalBoss.paragraphSubTypes.isFinalBossCombat = !paragraphToUpdateWithFinalBoss.isFinalBossCombat;
       // replacing the paragraph object in the original register with the updated paragraph object
       let updatedRegisterWithFinalBoss = state.paragraphRegister;
@@ -345,6 +403,43 @@ export default function(state = initialState, action) {
       return {
         ...state,
         paragraphRegister: updatedRegisterWithParagraphLinkStatus
+      };
+
+    case SYNC_REGISTERS_IN_REDUX:
+      return {
+        ...state,
+        paragraphRegister: action.paragraphRegisterFromFirestore,
+        paragraphLinkRegister: action.paragraphLinkRegisterFromFirestore
+      };
+
+    case CLEAR_QUEST_DATA:
+      return {
+        ...state,
+        paragraphNumberTotal: 1,
+        paragraphRegister: [
+          {
+            depthNumber: 0,
+            paragraphNumber: 1,
+
+            hasLinkToNextParagraph: false,
+            hasLinkToPreviousParagraph: true,
+            paragraphType: "narration",
+            paragraphSubTypes: {
+              isSuddenDeath: false,
+              isVictory: false,
+              isFinalBossCombat: false
+            },
+            nextParagraphs: [],
+            previousParagraphs: []
+          }
+        ],
+        paragraphLinkRegister: []
+      };
+
+    case SET_TO_GLOBAL_SAVING:
+      return {
+        ...state,
+        isGlobalSaving: !state.isGlobalSaving
       };
 
     default:

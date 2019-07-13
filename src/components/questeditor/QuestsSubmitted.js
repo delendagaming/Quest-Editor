@@ -35,6 +35,45 @@ class QuestsSubmitted extends Component {
     return null;
   }
 
+  onWithdrawClick = async e => {
+    const id = e.target.getAttribute("data-id");
+    let questSubmitted = {
+      ...this.props.questsSubmitted.find(el => el.id === id)
+    };
+
+    if (questSubmitted.Status !== "Submitted") {
+      window.alert("You cannot withdraw this Quest.");
+    } else if (
+      window.confirm(
+        `Are you sure you want to withdraw the Quest '${
+          questSubmitted.Title
+        }' ?`
+      )
+    ) {
+      questSubmitted.Status = "Withdrawn";
+      questSubmitted.SubmissionDate = "";
+
+      const result = await this.props.firestore.add(
+        { collection: "QuestsInProgress" },
+        questSubmitted
+      );
+      await this.props.firestore.update(
+        { collection: "QuestsInProgress", doc: result.id },
+        {
+          id: result.id
+        }
+      );
+      await this.props.firestore.delete({
+        collection: "QuestsSubmitted",
+        doc: id
+      });
+      window.alert(
+        "Your Quest has been properly withdrawn and you can now access it in the Quest Editor."
+      );
+      this.props.history.push(`/questeditor/inprogress/`);
+    }
+  };
+
   render() {
     const {
       questsSubmittedFromScribe,
@@ -79,9 +118,14 @@ class QuestsSubmitted extends Component {
                   <td>{questSubmittedFromScribe.Status}</td>
                   {questSubmittedFromScribe.Status === "Submitted" ? (
                     <td>
-                      <Link to={`/`} className="btn btn-secondary btn-sm">
-                        <i className="fas fa-arrow-circle-right" /> Withdraw
-                      </Link>
+                      <button
+                        data-id={questSubmittedFromScribe.id}
+                        data-title={questSubmittedFromScribe.Title}
+                        onClick={this.onWithdrawClick}
+                        className="btn btn-secondary btn-sm"
+                      >
+                        <i className="fas fa-arrow-circle-down" /> Withdraw
+                      </button>
                     </td>
                   ) : (
                     <td> </td>

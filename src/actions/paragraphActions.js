@@ -7,7 +7,9 @@ import {
   SET_TO_VICTORY,
   SET_TO_FINALBOSS,
   SET_PARAGRAPH_TYPE,
-  SET_PARAGRAPH_LINK_STATUS
+  SET_PARAGRAPH_LINK_STATUS,
+  SYNC_REGISTERS_IN_REDUX,
+  SET_TO_GLOBAL_SAVING
 } from "./types";
 
 export const addParagraphToTotal = (depthNumber, paragraphNumber) => {
@@ -134,5 +136,24 @@ export const removeParagraphLink = (
       depthNumberOfLinkedParagraph,
       paragraphNumberOfLinkedParagraph
     }
+  };
+};
+
+export const syncRegistersInRedux = (
+  paragraphRegisterFromFirestore,
+  paragraphLinkRegisterFromFirestore,
+  numDepthLevelsFromFirestore
+) => {
+  return {
+    type: SYNC_REGISTERS_IN_REDUX,
+    paragraphRegisterFromFirestore,
+    paragraphLinkRegisterFromFirestore,
+    numDepthLevelsFromFirestore
+  };
+};
+
+export const setToGlobalSaving = () => {
+  return {
+    type: SET_TO_GLOBAL_SAVING
   };
 };

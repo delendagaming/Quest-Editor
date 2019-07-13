@@ -6,6 +6,18 @@ class LinkSelection extends Component {
     isLinked: false
   };
 
+  componentDidMount = async () => {
+    if (this.props.isLinked) {
+      await this.setState({ isLinked: true });
+    }
+  };
+
+  componentDidUpdate = async prevProps => {
+    if (prevProps.isLinked !== this.props.isLinked) {
+      await this.setState({ isLinked: this.props.isLinked });
+    }
+  };
+
   toggleParagraphLink = async e => {
     let parentNode = e.target.parentNode;
     await this.setState({

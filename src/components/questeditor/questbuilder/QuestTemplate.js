@@ -6,14 +6,35 @@ const QuestTemplate = {
   Link: "",
   Location: [],
   Summary: "",
-  NbParagraphs: 0,
+  NbParagraphs: 1,
+  numDepthLevels: 1,
+  paragraphRegister: [
+    {
+      depthNumber: 0,
+      paragraphNumber: 1,
+
+      hasLinkToNextParagraph: false,
+      hasLinkToPreviousParagraph: true,
+      paragraphType: "narration",
+      paragraphSubTypes: {
+        isSuddenDeath: false,
+        isVictory: false,
+        isFinalBossCombat: false
+      },
+      nextParagraphs: [],
+      previousParagraphs: []
+    }
+  ],
+  paragraphLinkRegister: [],
   CreationDate: "",
   LastEditDate: "",
   SubmissionDate: "",
   Status: "In Progress",
   ScribeID: "",
   ScribeName: "",
-  ScribeEmail: ""
+  ScribeEmail: "",
+  Paragraphs: [],
+  globalSaveCounter: 0
 };
 
 export default QuestTemplate;

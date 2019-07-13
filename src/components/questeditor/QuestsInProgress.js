@@ -7,6 +7,7 @@ import { firestoreConnect } from "react-redux-firebase";
 
 import Spinner from "../layout/Spinner";
 import Admins from "../auth/Admin";
+import curday from "./CurrentDay";
 
 class QuestsInProgress extends Component {
   state = {
@@ -37,20 +38,127 @@ class QuestsInProgress extends Component {
   }
 
   // delete quest in progress
-  onDeleteClick = e => {
+  onDeleteClick = async e => {
     const { firestore } = this.props;
     const id = e.target.getAttribute("data-id");
     const title = e.target.getAttribute("data-title");
 
     if (
       window.confirm(
-        `Are you sure you want to delete the "${title}" Quest (id: ${id}) ? \n \n All content will be deleted and CANNOT BE RECOVERED.`
+        `Are you sure you want to delete the Quest "${title}" ? \n \n All content will be deleted and CANNOT BE RECOVERED.`
       )
     ) {
-      firestore.delete({
+      // deleting data from Firestore
+
+      await firestore.delete({
         collection: "QuestsInProgress",
         doc: id
       });
+      // deleting files from Storage
+
+      // Get a reference to the storage service, which is used to create references in your storage bucket
+      let storage = this.props.firebase.storage();
+
+      // Create a storage reference from our storage service
+      let storageRef = storage.ref();
+
+      let questRef = storageRef.child(`${id}`);
+      const questParagraphList = await questRef.listAll();
+
+      await questParagraphList.prefixes.forEach(async el => {
+        let startingSoundAndImageFiles = await el.listAll();
+        await startingSoundAndImageFiles.items.forEach(elem => elem.delete());
+
+        let outcomeSoundsFiles = await el
+          .child("Outcomes")
+          .child("Sounds")
+          .listAll();
+        await outcomeSoundsFiles.items.forEach(soundFile => soundFile.delete());
+
+        let outcomeImagesFiles = await el
+          .child("Outcomes")
+          .child("Images")
+          .listAll();
+        await outcomeImagesFiles.items.forEach(imageFile => imageFile.delete());
+      });
+    }
+  };
+
+  onSubmitClick = async e => {
+    const id = e.target.getAttribute("data-id");
+    let questInProgress = {
+      ...this.props.questsInProgress.find(el => el.id === id)
+    };
+
+    if (questInProgress.globalSaveCounter !== 1) {
+      window.alert(
+        "You must do a Global Save before you can submit this Quest."
+      );
+    } else if (
+      !questInProgress.Paragraphs.some(
+        el => el.paragraphSubTypes.isVictory === true
+      )
+    ) {
+      window.alert(
+        "The Quest must have at least one Victory Paragraph. Please edit the Quest and make a Global Save."
+      );
+    } else if (
+      !questInProgress.Paragraphs.some(
+        el => el.paragraphSubTypes.isFinalBossCombat === true
+      )
+    ) {
+      window.alert(
+        "The Quest must have at least one Final Boss Paragraph. Please edit the Quest and make a Global Save."
+      );
+    } else if (
+      !questInProgress.Paragraphs.every(
+        el => el.hasLinkToPreviousParagraph === true
+      )
+    ) {
+      window.alert(
+        "All Paragraphs of the Quest must be linked to at least one previous Paragraph. Please edit the Quest and make a Global Save."
+      );
+    } else if (
+      !questInProgress.Paragraphs.every(
+        el =>
+          el.hasLinkToNextParagraph === true ||
+          el.paragraphSubTypes.isVictory === true ||
+          el.paragraphSubTypes.isSuddenDeath === true
+      )
+    ) {
+      window.alert(
+        "All Paragraphs of the Quest must be linked to at least one next Paragraph or be of Victory or Sudden Death type. Please edit the Quest and make a Global Save."
+      );
+    } else {
+      if (
+        window.confirm(
+          `Are you sure you want to submit the Quest '${
+            questInProgress.Title
+          }'?`
+        )
+      ) {
+        questInProgress.Status = "Submitted";
+        questInProgress.SubmissionDate = curday();
+
+        const result = await this.props.firestore.add(
+          { collection: "QuestsSubmitted" },
+          questInProgress
+        );
+        await this.props.firestore.update(
+          { collection: "QuestsSubmitted", doc: result.id },
+          {
+            id: result.id
+          }
+        );
+        await this.props.firestore.delete({
+          collection: "QuestsInProgress",
+          doc: id
+        });
+        window.alert(
+          `Your Quest has been properly submitted and will now be reviewed by the Team.`
+        );
+        this.props.history.push(`/questeditor/submitted/`);
+      }
     }
   };
 
@@ -114,6 +222,14 @@ class QuestsInProgress extends Component {
                       className="btn btn-secondary btn-sm"
                     >
                       <i className="fas fa-ban" /> Delete
+                    </button>
+                    <button
+                      data-id={questInProgressFromScribe.id}
+                      data-title={questInProgressFromScribe.Title}
+                      onClick={this.onSubmitClick}
+                      className="btn btn-secondary btn-sm"
+                    >
+                      <i className="fas fa-arrow-circle-up" /> Submit
                     </button>
                   </td>
                 </tr>

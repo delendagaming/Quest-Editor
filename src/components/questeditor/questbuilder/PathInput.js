@@ -11,39 +11,270 @@ class PathInput extends Component {
     super(props);
     this.loadBackgroundImage = this.loadBackgroundImage.bind(this);
     this.loadStartingSound = this.loadStartingSound.bind(this);
+    this.loadOutcomeSound = this.loadOutcomeSound.bind(this);
   }
 
   state = {
-    selectedPointers: [{ image: DefaultPointer, top: 0, left: 0 }]
+    pathInputText: "",
+    selectedPointers: [],
+    backgroundImageCounter: 0,
+    startingSoundCounter: 0,
+    outcomeSoundArray: [],
+    nextParagraphs: []
+  };
+
+  componentDidMount = async () => {
+    if (this.props.QuestUnderEdition !== undefined) {
+      if (
+        this.props.QuestUnderEdition.Paragraphs.find(
+          el => el.id === this.props.id
+        )
+      ) {
+        let paragraphInFirestore = this.props.QuestUnderEdition.Paragraphs.find(
+          el => el.id === this.props.id
+        );
+        let selectedPointersFromFirestore = [];
+        paragraphInFirestore.nextParagraphs.forEach(el => {
+          if (el.selectedPointer) {
+            selectedPointersFromFirestore.push(el.selectedPointer);
+          } else
+            selectedPointersFromFirestore.push({
+              image: DefaultPointer,
+              top: 0,
+              left: 0
+            });
+        });
+        await this.setState({
+          pathInputText: paragraphInFirestore.inputText,
+          selectedPointers: selectedPointersFromFirestore
+        });
+
+        if (
+          paragraphInFirestore.nextParagraphs.some(
+            el => el.outcomeSoundURL !== undefined
+          )
+        ) {
+          let syncedOutcomeSoundArray = [];
+
+          paragraphInFirestore.nextParagraphs.forEach((elem, index) => {
+            if (elem.outcomeSoundURL !== undefined) {
+              syncedOutcomeSoundArray[index] = {
+                outcomeSoundCounter: 0,
+                rankInNextParagraphs: index,
+                outcomeSoundURL: elem.outcomeSoundURL
+              };
+            }
+          });
+          await this.setState({ outcomeSoundArray: syncedOutcomeSoundArray });
+        }
+      }
+    }
+
+    if (this.props.nextParagraphs) {
+      await this.setState({ nextParagraphs: this.props.nextParagraphs });
+    }
+  };
+
+  componentDidUpdate = async prevProps => {
+    if (this.props.id !== prevProps.id) {
+      if (
+        this.props.QuestUnderEdition.Paragraphs.find(
+          el => el.id === this.props.id
+        )
+      ) {
+        let paragraphInFirestore = this.props.QuestUnderEdition.Paragraphs.find(
+          el => el.id === this.props.id
+        );
+        let selectedPointersFromFirestore = [];
+        paragraphInFirestore.nextParagraphs.forEach(el => {
+          if (el.selectedPointer) {
+            selectedPointersFromFirestore.push(el.selectedPointer);
+          } else
+            selectedPointersFromFirestore.push({
+              image: DefaultPointer,
+              top: 0,
+              left: 0
+            });
+        });
+        await this.setState({
+          pathInputText: paragraphInFirestore.inputText,
+          selectedPointers: selectedPointersFromFirestore
+        });
+      }
+    }
+
+    if (
+      prevProps &&
+      this.props.nextParagraphs.length !== prevProps.nextParagraphs.length &&
+      this.props.isPointAndClickPath === true
+    ) {
+      let updatedSelectedPointers = [...this.state.selectedPointers];
+      if (this.props.nextParagraphs.length > prevProps.nextParagraphs.length) {
+        updatedSelectedPointers.push({
+          image: DefaultPointer,
+          top: 0,
+          left: 0
+        });
+      }
+      if (this.props.nextParagraphs.length < prevProps.nextParagraphs.length) {
+        let indexOfDeletedNextParagraph = this.props.nextParagraphs.findIndex(
+          (el, index) =>
+            prevProps.nextParagraphs[index] !== this.props.nextParagraphs[index]
+        );
+
+        updatedSelectedPointers.splice(indexOfDeletedNextParagraph, 1);
+      }
+
+      await this.setState({ selectedPointers: updatedSelectedPointers });
+    }
+
+    if (
+      prevProps &&
+      this.props.isPointAndClickPath === true &&
+      prevProps.isPointAndClickPath === false
+    ) {
+      let updatedSelectedPointers = [...this.state.selectedPointers];
+      this.props.nextParagraphs.forEach(() => {
+        updatedSelectedPointers.push({
+          image: DefaultPointer,
+          top: 0,
+          left: 0
+        });
+      });
+
+      await this.setState({ selectedPointers: updatedSelectedPointers });
+    }
+
+    if (
+      prevProps &&
+      this.props.isPointAndClickPath === false &&
+      prevProps.isPointAndClickPath === true
+    ) {
+      await this.setState({ selectedPointers: [] });
+    }
+
+    if (this.props.nextParagraphs !== prevProps.nextParagraphs) {
+      await this.setState({ nextParagraphs: this.props.nextParagraphs });
+
+      // adjusting outcomeSoundArray according to the number of next paragraphs
+      if (this.props.nextParagraphs.length < prevProps.nextParagraphs.length) {
+        let indexOfDeletedNextParagraph = prevProps.nextParagraphs.findIndex(
+          (el, index) =>
+            prevProps.nextParagraphs[index] !== this.props.nextParagraphs[index]
+        );
+        let newOutcomeSoundArray = this.state.outcomeSoundArray;
+        newOutcomeSoundArray.splice(indexOfDeletedNextParagraph, 1);
+        this.setState({ outcomeSoundArray: newOutcomeSoundArray });
+      }
+    }
   };
 
   onChange = e => {
     this.setState({ [e.target.name]: e.target.value });
   };
 
+  onChangeOutcomeText = async e => {
+    let outcomeDepthNumber = parseInt(e.target.getAttribute("data-depnum"), 10);
+
+    let outcomeParagraphNumber = parseInt(
+      e.target.getAttribute("data-parnum"),
+      10
+    );
+
+    let nextParagraphsUpdated = [...this.state.nextParagraphs];
+    let nextParagraphToUpdate = {
+      ...nextParagraphsUpdated.find(
+        el =>
+          el.depthNumber === outcomeDepthNumber &&
+          el.paragraphNumber === outcomeParagraphNumber
+      )
+    };
+
+    nextParagraphToUpdate.outcomeText = e.target.value;
+
+    let index = nextParagraphsUpdated.findIndex(
+      el =>
+        el.depthNumber === outcomeDepthNumber &&
+        el.paragraphNumber === outcomeParagraphNumber
+    );
+
+    nextParagraphsUpdated[index] = nextParagraphToUpdate;
+
+    await this.setState({ nextParagraphs: nextParagraphsUpdated });
+    await this.props.changeOutcomeText(
+      outcomeDepthNumber,
+      outcomeParagraphNumber,
+      nextParagraphToUpdate.outcomeText
+    );
+  };
+
   loadBackgroundImage(e) {
-    const selector = `outputIMG ${this.props.depthNumber} - ${
-      this.props.paragraphNumber
-    }`;
-    var image = document.getElementById(selector);
+    if (e.target.files[0].size > this.props.bytesLimitForUploads) {
+      window.alert(
+        `The file size cannot exceed ${this.props.bytesLimitForUploads /
+          1000000} MB.`
+      );
+    } else {
+      const selector = `outputIMG ${this.props.depthNumber} - ${
+        this.props.paragraphNumber
+      }`;
+      var image = document.getElementById(selector);
+      image.src = URL.createObjectURL(e.target.files[0]);
 
-    image.src = URL.createObjectURL(e.target.files[0]);
+      this.setState({
+        backgroundImage: e.target.files[0],
+        backgroundImageCounter: 1
+      });
+    }
   }
 
-  loadStartingSound(e) {
-    const selector = `startingsoundtitle ${this.props.depthNumber} - ${
-      this.props.paragraphNumber
-    }`;
-    var startingSoundTitle = document.getElementById(selector);
+  loadStartingSound = async e => {
+    let file = e.target.files[0];
+    if (file.size > this.props.bytesLimitForUploads) {
+      window.alert(
+        `The file size cannot exceed ${this.props.bytesLimitForUploads /
+          1000000} MB.`
+      );
+    } else {
+      await this.setState({
+        startingSound: file,
+        startingSoundCounter: 1
+      });
+      let controls = document.getElementById(
+        `startingSoundControls ${this.props.depthNumber} - ${
+          this.props.paragraphNumber
+        }`
+      );
+      controls.src = URL.createObjectURL(file);
+    }
+  };
 
-    startingSoundTitle.innerText = e.target.files[0].name;
-  }
+  loadOutcomeSound = async e => {
+    let file = e.target.files[0];
+    if (file.size > this.props.bytesLimitForUploads) {
+      window.alert(
+        `The file size cannot exceed ${this.props.bytesLimitForUploads /
+          1000000} MB.`
+      );
+    } else {
+      let newOutcomeSoundArray = this.state.outcomeSoundArray;
+      let rankInNextParagraphs = parseInt(
+        e.target.getAttribute("rankinnextparagraphs"),
+        10
+      );
+      let outcomeSoundURL = URL.createObjectURL(file);
+      newOutcomeSoundArray[rankInNextParagraphs] = {
+        outcomeSound: file,
+        outcomeSoundCounter: 1,
+        rankInNextParagraphs: rankInNextParagraphs,
+        outcomeSoundURL
+      };
 
-  loadOutcomeSound(e) {
-    const outcomeSoundTitle = e.target.parentNode.children[2];
-
-    outcomeSoundTitle.innerText = e.target.files[0].name;
-  }
+      await this.setState({
+        outcomeSoundArray: newOutcomeSoundArray
+      });
+    }
+  };
 
   setToPointAndClickPath = () => {
     this.props.setToPointAndClickPath();
@@ -53,12 +284,65 @@ class PathInput extends Component {
     this.props.setToTextualPath();
   };
 
-  selectPointer = (rank, imageSRC) => {
+  deleteParagraph = e => {
+    this.props.deleteParagraph(e);
+  };
+
+  saveParagraph = async e => {
+    e.preventDefault();
+    let inputs = [];
+    inputs.push(this.state.pathInputText);
+
+    if (this.state.backgroundImage && this.state.backgroundImageCounter === 1) {
+      inputs.push(this.state.backgroundImage);
+      // setting the counters to 0 so that files aren't uploaded again to Firebase in case of a new save, except if a new file has been uploaded by the user
+      await this.setState({
+        backgroundImageCounter: 0
+      });
+    } else if (
+      this.state.backgroundImage &&
+      this.state.backgroundImageCounter === 0
+    ) {
+      inputs.push("already uploaded");
+    } else inputs.push(null);
+
+    if (this.state.startingSound && this.state.startingSoundCounter === 1) {
+      inputs.push(this.state.startingSound);
+      // setting the counters to 0 so that files aren't uploaded again to Firebase in case of a new save, except if a new file has been uploaded by the user
+      await this.setState({
+        startingSoundCounter: 0
+      });
+    } else if (
+      this.state.startingSound &&
+      this.state.startingSoundCounter === 0
+    ) {
+      inputs.push("already uploaded");
+    } else inputs.push(null);
+
+    // need to make a shallow copy of the objects for the inputs, otherwise the following reset would affect them before the save function is launched
+    let inputArray = [];
+    this.state.outcomeSoundArray.forEach(el => inputArray.push({ ...el }));
+    inputs.push(inputArray);
+
+    let resetOutcomeSoundArray = this.state.outcomeSoundArray;
+    resetOutcomeSoundArray.map(el => (el.outcomeSoundCounter = 0));
+    await this.setState({ outcomeSoundArray: resetOutcomeSoundArray });
+
+    await this.props.saveParagraph(...inputs);
+  };
+
+  selectPointer = async (rankInNextParagraphs, imageSRC) => {
     let updatedSelectedPointers = this.state.selectedPointers;
-    updatedSelectedPointers[rank] = { image: imageSRC, top: 0, left: 0 };
-    this.setState({
+    updatedSelectedPointers[rankInNextParagraphs] = {
+      image: imageSRC,
+      top: 0,
+      left: 0
+    };
+    await this.setState({
       selectedPointers: updatedSelectedPointers
     });
+    // updating nextParagraphs in Paragraph state
+    await this.props.selectPointer(updatedSelectedPointers);
   };
 
   drag_start = async event => {
@@ -94,7 +378,7 @@ class PathInput extends Component {
     return false;
   };
 
-  drop = event => {
+  drop = async event => {
     var offset;
     try {
       offset = event.dataTransfer.getData("text/plain").split(",");
@@ -125,17 +409,26 @@ class PathInput extends Component {
 
     event.preventDefault();
 
-    let rank = pointerInMovement.getAttribute("rank");
-    let updatedSelectedPointersWithCoordinates = this.state.selectedPointers;
-    updatedSelectedPointersWithCoordinates[rank].left = parseInt(
-      pointerInMovement.style.left,
-      10
+    let rankInNextParagraphs = pointerInMovement.getAttribute(
+      "rankinnextparagraphs"
     );
-    updatedSelectedPointersWithCoordinates[rank].top = parseInt(
+    let updatedSelectedPointersWithCoordinates = [];
+    this.state.selectedPointers.forEach(el =>
+      updatedSelectedPointersWithCoordinates.push({ ...el })
+    );
+
+    updatedSelectedPointersWithCoordinates[
+      rankInNextParagraphs
+    ].left = parseInt(pointerInMovement.style.left, 10);
+    updatedSelectedPointersWithCoordinates[rankInNextParagraphs].top = parseInt(
       pointerInMovement.style.top,
       10
     );
-    this.setState({ selectedPointers: updatedSelectedPointersWithCoordinates });
+    await this.setState({
+      selectedPointers: updatedSelectedPointersWithCoordinates
+    });
+    // updating nextParagraphs in Paragraph state
+    await this.props.selectPointer(updatedSelectedPointersWithCoordinates);
 
     return false;
   };
@@ -206,8 +499,21 @@ class PathInput extends Component {
                       }...`}
                       rows="1"
                       required
-                      onChange={this.onChange}
-                      value={this.state.textInput}
+                      onChange={this.onChangeOutcomeText}
+                      value={
+                        this.state.nextParagraphs[paragraphOutcomes.length]
+                          ? this.state.nextParagraphs[paragraphOutcomes.length]
+                              .outcomeText
+                          : ""
+                      }
+                      data-depnum={
+                        this.props.paragraphData.paragraphLinkRegister[j]
+                          .depthNumber
+                      }
+                      data-parnum={
+                        this.props.paragraphData.paragraphLinkRegister[j]
+                          .paragraphNumber
+                      }
                       style={{
                         fontSize: "0.6rem",
                         resize: "none",
@@ -232,6 +538,8 @@ class PathInput extends Component {
                         this.props.paragraphNumber
                       } - ${j + 1}`}
                       style={{ display: "none" }}
+                      //  index in the nextParagraphs array
+                      rankinnextparagraphs={paragraphOutcomes.length}
                       onChange={this.loadOutcomeSound}
                     />
                     <p
@@ -258,22 +566,32 @@ class PathInput extends Component {
                         (Upload Sound)
                       </label>
                     </p>
-                    <h5
-                      style={{
-                        fontWeight: "400",
-                        fontSize: "0.5rem",
-                        lineHeight: "0.75",
-                        paddingLeft: "5px",
-                        overflowWrap: "break-word",
-                        marginBottom: 0,
-                        verticalAlign: "top"
-                      }}
-                      id={`outcomesoundtitle ${this.props.depthNumber} - ${
-                        this.props.paragraphNumber
-                      } - ${j + 1}`}
-                    >
-                      {" "}
-                    </h5>
+                    {this.state.outcomeSoundArray[paragraphOutcomes.length] ? (
+                      <audio
+                        controls
+                        src={
+                          this.state.outcomeSoundArray[paragraphOutcomes.length]
+                            .outcomeSoundURL
+                            ? this.state.outcomeSoundArray[
+                                paragraphOutcomes.length
+                              ].outcomeSoundURL
+                            : null
+                        }
+                        style={{
+                          display: "inline-block",
+                          width: "140px",
+                          height: "15px",
+                          paddingBottom: "3px",
+                          paddingLeft: "5px"
+                        }}
+                        id={`outcomeSoundControls ${this.props.depthNumber} - ${
+                          this.props.paragraphNumber
+                        } - ${paragraphOutcomes.length}`}
+                      >
+                        Your browser does not support the
+                        <code>audio</code> element.
+                      </audio>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -329,7 +647,8 @@ class PathInput extends Component {
                   >
                     {
                       <PointersCatalogue
-                        rank={k}
+                        //  index in the nextParagraphs array --> -1 not included due to different timing in calculation of props value (?)
+                        rankinnextparagraphs={paragraphOutcomes.length}
                         selectPointer={this.selectPointer}
                       />
                     }
@@ -337,8 +656,9 @@ class PathInput extends Component {
                 </li>
                 <img
                   src={
-                    this.state.selectedPointers[k]
-                      ? this.state.selectedPointers[k].image
+                    this.state.selectedPointers[paragraphOutcomes.length]
+                      ? this.state.selectedPointers[paragraphOutcomes.length]
+                          .image
                       : DefaultPointer
                   }
                   className="card-img-top"
@@ -365,6 +685,8 @@ class PathInput extends Component {
                       this.props.paragraphNumber
                     } - ${k + 1}`}
                     style={{ display: "none" }}
+                    // index in the nextParagraphs array
+                    rankinnextparagraphs={paragraphOutcomes.length}
                     onChange={this.loadOutcomeSound}
                   />
                   <p
@@ -391,41 +713,72 @@ class PathInput extends Component {
                       (Upload Sound)
                     </label>
                   </p>
-                  <h5
-                    style={{
-                      fontWeight: "400",
-                      fontSize: "0.5rem",
-                      lineHeight: "0.75",
-                      paddingLeft: "5px",
-                      overflowWrap: "break-word",
-                      marginBottom: 0,
-                      verticalAlign: "top"
-                    }}
-                    id={`outcomesoundtitle ${this.props.depthNumber} - ${
-                      this.props.paragraphNumber
-                    } - ${k + 1}`}
-                  >
-                    {" "}
-                  </h5>
+                  {this.state.outcomeSoundArray[paragraphOutcomes.length] ? (
+                    <audio
+                      controls
+                      src={
+                        this.state.outcomeSoundArray[paragraphOutcomes.length]
+                          .outcomeSoundURL
+                          ? this.state.outcomeSoundArray[
+                              paragraphOutcomes.length
+                            ].outcomeSoundURL
+                          : null
+                      }
+                      style={{
+                        display: "inline-block",
+                        width: "140px",
+                        height: "15px",
+                        paddingBottom: "3px",
+                        paddingLeft: "5px"
+                      }}
+                      id={`outcomeSoundControls ${this.props.depthNumber} - ${
+                        this.props.paragraphNumber
+                      } - ${paragraphOutcomes.length}`}
+                    >
+                      Your browser does not support the
+                      <code>audio</code> element.
+                    </audio>
+                  ) : null}
                 </div>
               </div>
             );
+
             draggablePointers.push(
               <img
                 src={
-                  this.state.selectedPointers[k]
-                    ? this.state.selectedPointers[k].image
+                  this.state.selectedPointers[paragraphOutcomes.length - 1]
+                    ? this.state.selectedPointers[paragraphOutcomes.length - 1]
+                        .image
                     : DefaultPointer
                 }
                 className="card-img-top-pointer"
                 alt="Answer by default"
                 draggable="true"
-                style={{ maxHeight: "50px", maxWidth: "50px" }}
+                style={{
+                  maxHeight: "50px",
+                  maxWidth: "50px",
+                  position: "absolute",
+                  top: `${
+                    this.state.selectedPointers[paragraphOutcomes.length - 1]
+                      ? this.state.selectedPointers[
+                          paragraphOutcomes.length - 1
+                        ].top
+                      : 0
+                  }px`,
+                  left: `${
+                    this.state.selectedPointers[paragraphOutcomes.length - 1]
+                      ? this.state.selectedPointers[
+                          paragraphOutcomes.length - 1
+                        ].left
+                      : 0
+                  }px`
+                }}
                 id={`draggableIMG ${this.props.depthNumber} - ${
                   this.props.paragraphNumber
                 } - ${k}`}
                 onDragStart={this.drag_start}
-                rank={k}
+                // index in the nextParagraphs array
+                rankinnextparagraphs={paragraphOutcomes.length - 1}
               />
             );
           }
@@ -467,20 +820,27 @@ class PathInput extends Component {
               (Upload Sound)
             </label>
           </p>
-          <h5
-            style={{
-              fontWeight: "400",
-              fontSize: "0.6rem",
-              lineHeight: 1,
-              paddingLeft: "5px",
-              display: "inline-block"
-            }}
-            id={`startingsoundtitle ${this.props.depthNumber} - ${
-              this.props.paragraphNumber
-            }`}
-          >
-            {" "}
-          </h5>
+          {this.state.startingSound || this.props.startingSoundURL ? (
+            <audio
+              controls
+              src={
+                this.props.startingSoundURL ? this.props.startingSoundURL : null
+              }
+              style={{
+                display: "inline-block",
+                width: "140px",
+                height: "15px",
+                paddingTop: "3px",
+                paddingLeft: "5px"
+              }}
+              id={`startingSoundControls ${this.props.depthNumber} - ${
+                this.props.paragraphNumber
+              }`}
+            >
+              Your browser does not support the
+              <code>audio</code> element.
+            </audio>
+          ) : null}
         </div>
         <div
           className="card-image"
@@ -518,7 +878,11 @@ class PathInput extends Component {
             onDrop={this.drop}
           >
             <img
-              src={DefaultPathBackground}
+              src={
+                this.props.backgroundImageURL
+                  ? this.props.backgroundImageURL
+                  : DefaultPathBackground
+              }
               className="card-img-top"
               alt="Background by default"
               style={{ width: "100%", height: "100%" }}
@@ -559,7 +923,7 @@ class PathInput extends Component {
                 rows="4"
                 required
                 onChange={this.onChange}
-                value={this.state.textInput}
+                value={this.state.pathInputText}
                 style={{ fontSize: "0.7rem", resize: "none" }}
               />
 
@@ -576,6 +940,7 @@ class PathInput extends Component {
                     {"   "}
                     <input
                       type="checkbox"
+                      checked={this.props.isTextualPath}
                       name="textualpath"
                       onChange={this.setToTextualPath}
                     />
@@ -587,6 +952,7 @@ class PathInput extends Component {
                     {"   "}
                     <input
                       type="checkbox"
+                      checked={this.props.isPointAndClickPath}
                       name="pointandclickpath"
                       onChange={this.setToPointAndClickPath}
                     />
@@ -598,6 +964,24 @@ class PathInput extends Component {
           <div style={{ paddingLeft: "10px", paddingRight: "10px" }}>
             <div>{paragraphOutcomes}</div>
           </div>
+        </div>
+        <div style={{ marginTop: "5px" }}>
+          <input
+            type="submit"
+            value="Save Paragraph"
+            className="btn btn-dark paragraph-save"
+            style={{ display: "inline-block", width: "50%" }}
+            onClick={this.saveParagraph}
+          />
+
+          <input
+            type="submit"
+            value="Delete Paragraph"
+            paragraphnumber={this.props.paragraphNumber}
+            className="btn btn-dark paragraph-delete"
+            style={{ display: "inline-block", width: "50%" }}
+            onClick={this.props.deleteParagraph}
+          />
         </div>
       </div>
     );

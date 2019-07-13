@@ -14,54 +14,173 @@ class CombatInput extends Component {
     this.loadStartingSound = this.loadStartingSound.bind(this);
   }
   state = {
-    selectedMonster: {}
+    selectedMonster: {},
+    combatInputText: "",
+    backgroundImageCounter: 0
   };
 
-  onChange = e => {
+  componentDidMount = async () => {
+    if (this.props.QuestUnderEdition !== undefined) {
+      if (
+        this.props.QuestUnderEdition.Paragraphs.find(
+          el => el.id === this.props.id
+        )
+      ) {
+        let paragraphInFirestore = this.props.QuestUnderEdition.Paragraphs.find(
+          el => el.id === this.props.id
+        );
+        await this.setState({
+          combatInputText: paragraphInFirestore.inputText
+        });
+      }
+    }
+
+    if (this.state.selectedMonster !== this.props.selectedMonster) {
+      await this.setState({ selectedMonster: this.props.selectedMonster });
+    }
+  };
+
+  componentDidUpdate = async prevProps => {
+    if (this.props.id !== prevProps.id) {
+      if (
+        this.props.QuestUnderEdition.Paragraphs.find(
+          el => el.id === this.props.id
+        )
+      ) {
+        let paragraphInFirestore = this.props.QuestUnderEdition.Paragraphs.find(
+          el => el.id === this.props.id
+        );
+        await this.setState({
+          combatInputText: paragraphInFirestore.inputText
+        });
+      }
+    }
+  };
+
+  onChangeInputText = e => {
     this.setState({ [e.target.name]: e.target.value });
   };
 
-  loadBackgroundImage(e) {
-    const selector = `outputIMG ${this.props.depthNumber} - ${
-      this.props.paragraphNumber
-    }`;
-    var image = document.getElementById(selector);
+  loadBackgroundImage = async e => {
+    if (e.target.files[0].size > this.props.bytesLimitForUploads) {
+      window.alert(
+        `The file size cannot exceed ${this.props.bytesLimitForUploads /
+          1000000} MB.`
+      );
+    } else {
+      const selector = `outputIMG ${this.props.depthNumber} - ${
+        this.props.paragraphNumber
+      }`;
+      let image = document.getElementById(selector);
+      image.src = URL.createObjectURL(e.target.files[0]);
 
-    image.src = URL.createObjectURL(e.target.files[0]);
-  }
-
-  loadStartingSound(e) {
-    const selector = `startingsoundtitle ${this.props.depthNumber} - ${
-      this.props.paragraphNumber
-    }`;
-    var startingSoundTitle = document.getElementById(selector);
-
-    startingSoundTitle.innerText = e.target.files[0].name;
-  }
-
-  loadOutcomeSound(e) {
-    const outcomeSoundTitle = e.target.parentNode.children[2];
-
-    outcomeSoundTitle.innerText = e.target.files[0].name;
-  }
-
-  setToMobCombat = () => {
-    this.props.setToMobCombat();
-  };
-  setToEliteMobCombat = () => {
-    this.props.setToEliteMobCombat();
-  };
-  setToFinalBossCombat = () => {
-    this.props.setToFinalBossCombat();
+      await this.setState({
+        backgroundImage: e.target.files[0],
+        backgroundImageCounter: 1
+      });
+    }
   };
 
-  selectMonster = (monsterArray, monsterImage) => {
-    let updatedSelectedMonster = this.state.selectedMonster;
+  loadStartingSound = async e => {
+    let file = e.target.files[0];
+    if (file.size > this.props.bytesLimitForUploads) {
+      window.alert(
+        `The file size cannot exceed ${this.props.bytesLimitForUploads /
+          1000000} MB.`
+      );
+    } else {
+      await this.setState({
+        startingSound: file,
+        startingSoundCounter: 1
+      });
+      let controls = document.getElementById(
+        `startingSoundControls ${this.props.depthNumber} - ${
+          this.props.paragraphNumber
+        }`
+      );
+      controls.src = URL.createObjectURL(file);
+    }
+  };
+
+  setToMobCombat = async () => {
+    if (this.props.isMobCombat) {
+      await this.setState({ selectedMonster: {} });
+    }
+    await this.props.setToMobCombat();
+  };
+  setToEliteMobCombat = async () => {
+    if (this.props.isEliteMobCombat) {
+      await this.setState({ selectedMonster: {} });
+    }
+    await this.props.setToEliteMobCombat();
+  };
+  setToFinalBossCombat = async () => {
+    if (
+      this.props.nextParagraphs.find(el =>
+        this.props.paragraphData.paragraphRegister.find(
+          elem => elem.paragraphSubTypes.isVictory === true
+        )
+      )
+    ) {
+      window.alert(
+        "This paragraph is linked to a Victory paragraph and must be of 'Final Boss' type. If you want to change the type of mob, you must first remove the link to the 'Victory' paragraph."
+      );
+    } else {
+      if (this.props.isFinalBossCombat) {
+        await this.setState({ selectedMonster: {} });
+      }
+      await this.props.setToFinalBossCombat();
+    }
+  };
+
+  deleteParagraph = e => {
+    this.props.deleteParagraph(e);
+  };
+
+  saveParagraph = async e => {
+    e.preventDefault();
+    let inputs = [];
+    inputs.push(this.state.combatInputText);
+
+    if (this.state.backgroundImage && this.state.backgroundImageCounter === 1) {
+      inputs.push(this.state.backgroundImage);
+      // setting the counters to 0 so that files aren't uploaded again to Firebase in case of a new save, except if a new file has been uploaded by the user
+      await this.setState({
+        backgroundImageCounter: 0
+      });
+    } else if (
+      this.state.backgroundImage &&
+      this.state.backgroundImageCounter === 0
+    ) {
+      inputs.push("already uploaded");
+    } else inputs.push(null);
+
+    if (this.state.startingSound && this.state.startingSoundCounter === 1) {
+      inputs.push(this.state.startingSound);
+      // setting the counters to 0 so that files aren't uploaded again to Firebase in case of a new save, except if a new file has been uploaded by the user
+      await this.setState({
+        startingSoundCounter: 0
+      });
+    } else if (
+      this.state.startingSound &&
+      this.state.startingSoundCounter === 0
+    ) {
+      inputs.push("already uploaded");
+    } else inputs.push(null);
+
+    await this.props.saveParagraph(...inputs);
+  };
+
+  selectMonster = async (monsterArray, monsterImage) => {
+    let updatedSelectedMonster = { ...this.state.selectedMonster };
     updatedSelectedMonster.characteristics = monsterArray;
     updatedSelectedMonster.image = monsterImage;
-    this.setState({
+    updatedSelectedMonster.left = 0;
+    updatedSelectedMonster.top = 0;
+    await this.setState({
       selectedMonster: updatedSelectedMonster
     });
+    await this.props.selectMonster(updatedSelectedMonster);
   };
 
   drag_start = async event => {
@@ -97,7 +216,7 @@ class CombatInput extends Component {
     return false;
   };
 
-  drop = event => {
+  drop = async event => {
     var offset;
     try {
       offset = event.dataTransfer.getData("text/plain").split(",");
@@ -128,7 +247,9 @@ class CombatInput extends Component {
 
     event.preventDefault();
 
-    let updatedSelectedMonsterWithCoordinates = this.state.selectedMonster;
+    let updatedSelectedMonsterWithCoordinates = {
+      ...this.state.selectedMonster
+    };
     updatedSelectedMonsterWithCoordinates.left = parseInt(
       monsterInMovement.style.left,
       10
@@ -137,7 +258,10 @@ class CombatInput extends Component {
       monsterInMovement.style.top,
       10
     );
-    this.setState({ selectedMonster: updatedSelectedMonsterWithCoordinates });
+    await this.setState({
+      selectedMonster: updatedSelectedMonsterWithCoordinates
+    });
+    await this.props.selectMonster(updatedSelectedMonsterWithCoordinates);
 
     return false;
   };
@@ -148,27 +272,18 @@ class CombatInput extends Component {
     switch (true) {
       case this.props.isMobCombat:
         MonsterSelection.push(
-          <MobMonsterCatalogue
-            isMobCombat={this.props.isMobCombat}
-            selectMonster={this.selectMonster}
-          />
+          <MobMonsterCatalogue selectMonster={this.selectMonster} />
         );
         break;
       case this.props.isEliteMobCombat:
         MonsterSelection.push(
-          <EliteMobMonsterCatalogue
-            isMobCombat={this.props.isMobCombat}
-            selectMonster={this.selectMonster}
-          />
+          <EliteMobMonsterCatalogue selectMonster={this.selectMonster} />
         );
         break;
 
       case this.props.isFinalBossCombat:
         MonsterSelection.push(
-          <FinalBossMonsterCatalogue
-            isMobCombat={this.props.isMobCombat}
-            selectMonster={this.selectMonster}
-          />
+          <FinalBossMonsterCatalogue selectMonster={this.selectMonster} />
         );
         break;
 
@@ -242,20 +357,27 @@ class CombatInput extends Component {
               (Upload Sound)
             </label>
           </p>
-          <h5
-            style={{
-              fontWeight: "400",
-              fontSize: "0.6rem",
-              lineHeight: 1,
-              paddingLeft: "5px",
-              display: "inline-block"
-            }}
-            id={`startingsoundtitle ${this.props.depthNumber} - ${
-              this.props.paragraphNumber
-            }`}
-          >
-            {" "}
-          </h5>
+          {this.state.startingSound || this.props.startingSoundURL ? (
+            <audio
+              controls
+              src={
+                this.props.startingSoundURL ? this.props.startingSoundURL : null
+              }
+              style={{
+                display: "inline-block",
+                width: "140px",
+                height: "15px",
+                paddingTop: "3px",
+                paddingLeft: "5px"
+              }}
+              id={`startingSoundControls ${this.props.depthNumber} - ${
+                this.props.paragraphNumber
+              }`}
+            >
+              Your browser does not support the
+              <code>audio</code> element.
+            </audio>
+          ) : null}
         </div>
         <div
           className="card-image"
@@ -293,7 +415,11 @@ class CombatInput extends Component {
             onDrop={this.drop}
           >
             <img
-              src={DefaultCombatBackground}
+              src={
+                this.props.backgroundImageURL
+                  ? this.props.backgroundImageURL
+                  : DefaultCombatBackground
+              }
               className="card-img-top"
               alt="Background by default"
               style={{ width: "100%", height: "100%" }}
@@ -308,7 +434,20 @@ class CombatInput extends Component {
               }`}
               draggable="true"
               alt="monster"
-              style={{ height: "135px", width: "135px" }}
+              style={{
+                height: "135px",
+                width: "135px",
+                top: `${
+                  this.state.selectedMonster
+                    ? this.state.selectedMonster.top
+                    : 0
+                }px`,
+                left: `${
+                  this.state.selectedMonster
+                    ? this.state.selectedMonster.left
+                    : 0
+                }px`
+              }}
               onDragStart={this.drag_start}
             />
           </div>
@@ -342,8 +481,8 @@ class CombatInput extends Component {
                 placeholder="Write your combat introduction text here..."
                 rows="4"
                 required
-                onChange={this.onChange}
-                value={this.state.textInput}
+                onChange={this.onChangeInputText}
+                value={this.state.combatInputText}
                 style={{ fontSize: "0.7rem", resize: "none" }}
               />
 
@@ -362,6 +501,7 @@ class CombatInput extends Component {
                     {"   "}
                     <input
                       type="checkbox"
+                      checked={this.props.isMobCombat}
                       name="mobcombat"
                       onChange={this.setToMobCombat}
                     />
@@ -373,6 +513,7 @@ class CombatInput extends Component {
                     {"   "}
                     <input
                       type="checkbox"
+                      checked={this.props.isEliteMobCombat}
                       name="elitemobcombat"
                       onChange={this.setToEliteMobCombat}
                     />
@@ -384,6 +525,7 @@ class CombatInput extends Component {
                     {"   "}
                     <input
                       type="checkbox"
+                      checked={this.props.isFinalBossCombat}
                       name="finalbosscombat"
                       onChange={this.setToFinalBossCombat}
                     />
@@ -425,6 +567,24 @@ class CombatInput extends Component {
               {followingParagraph}
             </div>
           </form>
+        </div>
+        <div style={{ marginTop: "5px" }}>
+          <input
+            type="submit"
+            value="Save Paragraph"
+            className="btn btn-dark paragraph-save"
+            style={{ display: "inline-block", width: "50%" }}
+            onClick={this.saveParagraph}
+          />
+
+          <input
+            type="submit"
+            value="Delete Paragraph"
+            paragraphnumber={this.props.paragraphNumber}
+            className="btn btn-dark paragraph-delete"
+            style={{ display: "inline-block", width: "50%" }}
+            onClick={this.props.deleteParagraph}
+          />
         </div>
       </div>
     );

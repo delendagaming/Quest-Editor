@@ -9,42 +9,245 @@ class RiddleInput extends Component {
     super(props);
     this.loadBackgroundImage = this.loadBackgroundImage.bind(this);
     this.loadStartingSound = this.loadStartingSound.bind(this);
+    this.loadOutcomeImage = this.loadOutcomeImage.bind(this);
+    this.loadOutcomeSound = this.loadOutcomeSound.bind(this);
   }
-  state = {};
+  state = {
+    riddleInputText: "",
+    backgroundImageCounter: 0,
+    startingSoundCounter: 0,
+    outcomeSoundArray: [],
+    outcomeImageArray: [],
+    nextParagraphs: []
+  };
 
-  onChange = e => {
+  componentDidMount = async () => {
+    if (this.props.QuestUnderEdition !== undefined) {
+      if (
+        this.props.QuestUnderEdition.Paragraphs.find(
+          el => el.id === this.props.id
+        )
+      ) {
+        let paragraphInFirestore = this.props.QuestUnderEdition.Paragraphs.find(
+          el => el.id === this.props.id
+        );
+        await this.setState({
+          riddleInputText: paragraphInFirestore.inputText
+        });
+
+        if (
+          paragraphInFirestore.nextParagraphs.some(
+            el => el.outcomeSoundURL !== undefined
+          )
+        ) {
+          let syncedOutcomeSoundArray = [];
+
+          paragraphInFirestore.nextParagraphs.forEach((elem, index) => {
+            if (elem.outcomeSoundURL !== undefined) {
+              syncedOutcomeSoundArray[index] = {
+                outcomeSoundCounter: 0,
+                rankInNextParagraphs: index,
+                outcomeSoundURL: elem.outcomeSoundURL
+              };
+            }
+          });
+          await this.setState({ outcomeSoundArray: syncedOutcomeSoundArray });
+        }
+
+        if (
+          paragraphInFirestore.nextParagraphs.some(
+            el => el.outcomeImageURL !== undefined
+          )
+        ) {
+          let syncedOutcomeImageArray = [];
+
+          paragraphInFirestore.nextParagraphs.forEach((elem, index) => {
+            if (elem.outcomeImageURL !== undefined) {
+              syncedOutcomeImageArray[index] = {
+                outcomeImageCounter: 0,
+                rankInNextParagraphs: index,
+                outcomeImageURL: elem.outcomeImageURL
+              };
+            }
+          });
+          await this.setState({ outcomeImageArray: syncedOutcomeImageArray });
+        }
+      }
+    }
+    if (this.props.nextParagraphs) {
+      await this.setState({ nextParagraphs: this.props.nextParagraphs });
+    }
+  };
+
+  componentDidUpdate = async prevProps => {
+    if (this.props.id !== prevProps.id) {
+      if (
+        this.props.QuestUnderEdition.Paragraphs.find(
+          el => el.id === this.props.id
+        )
+      ) {
+        let paragraphInFirestore = this.props.QuestUnderEdition.Paragraphs.find(
+          el => el.id === this.props.id
+        );
+        await this.setState({
+          riddleInputText: paragraphInFirestore.inputText
+        });
+      }
+    }
+
+    if (this.props.nextParagraphs !== prevProps.nextParagraphs) {
+      await this.setState({ nextParagraphs: this.props.nextParagraphs });
+    }
+
+    // adjusting outcomeSoundArray and outcomeImageArray according to the number of next paragraphs
+    if (this.props.nextParagraphs.length < prevProps.nextParagraphs.length) {
+      let indexOfDeletedNextParagraph = prevProps.nextParagraphs.findIndex(
+        (el, index) =>
+          prevProps.nextParagraphs[index] !== this.props.nextParagraphs[index]
+      );
+
+      let newOutcomeSoundArray = this.state.outcomeSoundArray;
+      newOutcomeSoundArray.splice(indexOfDeletedNextParagraph, 1);
+      this.setState({ outcomeSoundArray: newOutcomeSoundArray });
+      let newOutcomeImageArray = this.state.outcomeImageArray;
+      newOutcomeImageArray.splice(indexOfDeletedNextParagraph, 1);
+      this.setState({ outcomeImageArray: newOutcomeImageArray });
+    }
+  };
+
+  onChangeInputText = e => {
     this.setState({ [e.target.name]: e.target.value });
   };
 
-  loadBackgroundImage(e) {
-    const selector = `outputIMG ${this.props.depthNumber} - ${
-      this.props.paragraphNumber
-    }`;
-    var image = document.getElementById(selector);
+  onChangeOutcomeText = async e => {
+    let outcomeDepthNumber = parseInt(e.target.getAttribute("data-depnum"), 10);
 
-    image.src = URL.createObjectURL(e.target.files[0]);
+    let outcomeParagraphNumber = parseInt(
+      e.target.getAttribute("data-parnum"),
+      10
+    );
+
+    let nextParagraphsUpdated = [...this.state.nextParagraphs];
+    let nextParagraphToUpdate = {
+      ...nextParagraphsUpdated.find(
+        el =>
+          el.depthNumber === outcomeDepthNumber &&
+          el.paragraphNumber === outcomeParagraphNumber
+      )
+    };
+
+    nextParagraphToUpdate.outcomeText = e.target.value;
+
+    let index = nextParagraphsUpdated.findIndex(
+      el =>
+        el.depthNumber === outcomeDepthNumber &&
+        el.paragraphNumber === outcomeParagraphNumber
+    );
+
+    nextParagraphsUpdated[index] = nextParagraphToUpdate;
+
+    await this.setState({ nextParagraphs: nextParagraphsUpdated });
+    await this.props.changeOutcomeText(
+      outcomeDepthNumber,
+      outcomeParagraphNumber,
+      nextParagraphToUpdate.outcomeText
+    );
+  };
+
+  loadBackgroundImage(e) {
+    if (e.target.files[0].size > this.props.bytesLimitForUploads) {
+      window.alert(
+        `The file size cannot exceed ${this.props.bytesLimitForUploads /
+          1000000} MB.`
+      );
+    } else {
+      const selector = `outputIMG ${this.props.depthNumber} - ${
+        this.props.paragraphNumber
+      }`;
+      let image = document.getElementById(selector);
+      image.src = URL.createObjectURL(e.target.files[0]);
+
+      this.setState({
+        backgroundImage: e.target.files[0],
+        backgroundImageCounter: 1
+      });
+    }
   }
 
   loadOutcomeImage(e) {
-    const outcomeImage =
-      e.target.parentNode.children[3].children[0].children[0];
-    outcomeImage.src = URL.createObjectURL(e.target.files[0]);
+    if (e.target.files[0].size > this.props.bytesLimitForUploads) {
+      window.alert(
+        `The file size cannot exceed ${this.props.bytesLimitForUploads /
+          1000000} MB.`
+      );
+    } else {
+      let outcomeImageURL = URL.createObjectURL(e.target.files[0]);
+
+      let newOutcomeImageArray = this.state.outcomeImageArray;
+      let rankInNextParagraphs = parseInt(
+        e.target.getAttribute("rankinnextparagraphs"),
+        10
+      );
+      newOutcomeImageArray[rankInNextParagraphs] = {
+        outcomeImage: e.target.files[0],
+        outcomeImageCounter: 1,
+        rankInNextParagraphs: rankInNextParagraphs,
+        outcomeImageURL
+      };
+
+      this.setState({
+        outcomeImageArray: newOutcomeImageArray
+      });
+    }
   }
 
-  loadStartingSound(e) {
-    const selector = `startingsoundtitle ${this.props.depthNumber} - ${
-      this.props.paragraphNumber
-    }`;
-    var startingSoundTitle = document.getElementById(selector);
+  loadStartingSound = async e => {
+    let file = e.target.files[0];
+    if (file.size > this.props.bytesLimitForUploads) {
+      window.alert(
+        `The file size cannot exceed ${this.props.bytesLimitForUploads /
+          1000000} MB.`
+      );
+    } else {
+      await this.setState({
+        startingSound: file,
+        startingSoundCounter: 1
+      });
+      let controls = document.getElementById(
+        `startingSoundControls ${this.props.depthNumber} - ${
+          this.props.paragraphNumber
+        }`
+      );
+      controls.src = URL.createObjectURL(file);
+    }
+  };
 
-    startingSoundTitle.innerText = e.target.files[0].name;
-  }
+  loadOutcomeSound = async e => {
+    let file = e.target.files[0];
+    if (file.size > this.props.bytesLimitForUploads) {
+      window.alert(
+        `The file size cannot exceed ${this.props.bytesLimitForUploads /
+          1000000} MB.`
+      );
+    } else {
+      let newOutcomeSoundArray = this.state.outcomeSoundArray;
+      let rankInNextParagraphs = parseInt(
+        e.target.getAttribute("rankinnextparagraphs"),
+        10
+      );
+      let outcomeSoundURL = URL.createObjectURL(file);
+      newOutcomeSoundArray[rankInNextParagraphs] = {
+        outcomeSound: file,
+        outcomeSoundCounter: 1,
+        rankInNextParagraphs: rankInNextParagraphs,
+        outcomeSoundURL
+      };
 
-  loadOutcomeSound(e) {
-    const outcomeSoundTitle = e.target.parentNode.children[2];
-
-    outcomeSoundTitle.innerText = e.target.files[0].name;
-  }
+      await this.setState({
+        outcomeSoundArray: newOutcomeSoundArray
+      });
+    }
+  };
 
   setToGraphicalRiddle = () => {
     this.props.setToGraphicalRiddle();
@@ -52,6 +255,67 @@ class RiddleInput extends Component {
 
   setToTextualRiddle = () => {
     this.props.setToTextualRiddle();
+  };
+
+  deleteParagraph = e => {
+    this.props.deleteParagraph(e);
+  };
+
+  saveParagraph = async e => {
+    e.preventDefault();
+    let inputs = [];
+    inputs.push(this.state.riddleInputText);
+
+    if (this.state.backgroundImage && this.state.backgroundImageCounter === 1) {
+      inputs.push(this.state.backgroundImage);
+      // setting the counters to 0 so that files aren't uploaded again to Firebase in case of a new save, except if a new file has been uploaded by the user
+      await this.setState({
+        backgroundImageCounter: 0
+      });
+    } else if (
+      this.state.backgroundImage &&
+      this.state.backgroundImageCounter === 0
+    ) {
+      inputs.push("already uploaded");
+    } else inputs.push(null);
+
+    if (this.state.startingSound && this.state.startingSoundCounter === 1) {
+      inputs.push(this.state.startingSound);
+      // setting the counters to 0 so that files aren't uploaded again to Firebase in case of a new save, except if a new file has been uploaded by the user
+      await this.setState({
+        startingSoundCounter: 0
+      });
+    } else if (
+      this.state.startingSound &&
+      this.state.startingSoundCounter === 0
+    ) {
+      inputs.push("already uploaded");
+    } else inputs.push(null);
+
+    // need to make a shallow copy of the objects for the inputs, otherwise the following reset would affect them before the save function is launched
+    let inputArraySounds = [];
+    this.state.outcomeSoundArray.forEach(el =>
+      inputArraySounds.push({ ...el })
+    );
+    inputs.push(inputArraySounds);
+
+    let resetOutcomeSoundArray = this.state.outcomeSoundArray;
+    resetOutcomeSoundArray.map(el => (el.outcomeSoundCounter = 0));
+    await this.setState({ outcomeSoundArray: resetOutcomeSoundArray });
+
+    // need to make a shallow copy of the objects for the inputs, otherwise the following reset would affect them before the save function is launched
+    let inputArrayImages = [];
+    this.state.outcomeImageArray.forEach(el =>
+      inputArrayImages.push({ ...el })
+    );
+    inputs.push(inputArrayImages);
+
+    let resetOutcomeImageArray = this.state.outcomeImageArray;
+    resetOutcomeImageArray.map(el => (el.outcomeImageCounter = 0));
+    await this.setState({ outcomeImageArray: resetOutcomeImageArray });
+
+    // pass on inputs to paragraph component
+    await this.props.saveParagraph(...inputs);
   };
 
   render() {
@@ -119,8 +383,21 @@ class RiddleInput extends Component {
                       }...`}
                       rows="1"
                       required
-                      onChange={this.onChange}
-                      value={this.state.textInput}
+                      onChange={this.onChangeOutcomeText}
+                      value={
+                        this.state.nextParagraphs[paragraphOutcomes.length]
+                          ? this.state.nextParagraphs[paragraphOutcomes.length]
+                              .outcomeText
+                          : ""
+                      }
+                      data-depnum={
+                        this.props.paragraphData.paragraphLinkRegister[j]
+                          .depthNumber
+                      }
+                      data-parnum={
+                        this.props.paragraphData.paragraphLinkRegister[j]
+                          .paragraphNumber
+                      }
                       style={{
                         fontSize: "0.6rem",
                         resize: "none",
@@ -146,6 +423,8 @@ class RiddleInput extends Component {
                       } - ${j + 1}`}
                       style={{ display: "none" }}
                       onChange={this.loadOutcomeSound}
+                      // index in the nextParagraphs array
+                      rankinnextparagraphs={paragraphOutcomes.length}
                     />
                     <p
                       style={{
@@ -171,22 +450,32 @@ class RiddleInput extends Component {
                         (Upload Sound)
                       </label>
                     </p>
-                    <h5
-                      style={{
-                        fontWeight: "400",
-                        fontSize: "0.5rem",
-                        lineHeight: "0.75",
-                        paddingLeft: "5px",
-                        overflowWrap: "break-word",
-                        marginBottom: 0,
-                        verticalAlign: "top"
-                      }}
-                      id={`outcomesoundtitle ${this.props.depthNumber} - ${
-                        this.props.paragraphNumber
-                      } - ${j + 1}`}
-                    >
-                      {" "}
-                    </h5>
+                    {this.state.outcomeSoundArray[paragraphOutcomes.length] ? (
+                      <audio
+                        controls
+                        src={
+                          this.state.outcomeSoundArray[paragraphOutcomes.length]
+                            .outcomeSoundURL
+                            ? this.state.outcomeSoundArray[
+                                paragraphOutcomes.length
+                              ].outcomeSoundURL
+                            : null
+                        }
+                        style={{
+                          display: "inline-block",
+                          width: "140px",
+                          height: "15px",
+                          paddingBottom: "3px",
+                          paddingLeft: "5px"
+                        }}
+                        id={`outcomeSoundControls ${this.props.depthNumber} - ${
+                          this.props.paragraphNumber
+                        } - ${paragraphOutcomes.length}`}
+                      >
+                        Your browser does not support the
+                        <code>audio</code> element.
+                      </audio>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -236,6 +525,8 @@ class RiddleInput extends Component {
                   } - ${k + 1}`}
                   style={{ display: "none" }}
                   onChange={this.loadOutcomeImage}
+                  // index in the nextParagraphs array
+                  rankinnextparagraphs={paragraphOutcomes.length}
                 />{" "}
                 <p style={{ marginBottom: 0, display: "inline-block" }}>
                   <label
@@ -263,7 +554,17 @@ class RiddleInput extends Component {
                     }}
                   >
                     <img
-                      src={DefaultAnswer}
+                      src={
+                        this.state.outcomeImageArray[
+                          paragraphOutcomes.length
+                        ] &&
+                        this.state.outcomeImageArray[paragraphOutcomes.length]
+                          .outcomeImageURL
+                          ? this.state.outcomeImageArray[
+                              paragraphOutcomes.length
+                            ].outcomeImageURL
+                          : DefaultAnswer
+                      }
                       className="card-img-top"
                       alt="Answer by default"
                       style={{ width: "100%", maxHeight: "30px" }}
@@ -288,6 +589,8 @@ class RiddleInput extends Component {
                         this.props.paragraphNumber
                       } - ${k + 1}`}
                       style={{ display: "none" }}
+                      //  index in the nextParagraphs array
+                      rankinnextparagraphs={paragraphOutcomes.length}
                       onChange={this.loadOutcomeSound}
                     />
                     <p
@@ -314,22 +617,32 @@ class RiddleInput extends Component {
                         (Upload Sound)
                       </label>
                     </p>
-                    <h5
-                      style={{
-                        fontWeight: "400",
-                        fontSize: "0.5rem",
-                        lineHeight: "0.75",
-                        paddingLeft: "5px",
-                        overflowWrap: "break-word",
-                        marginBottom: 0,
-                        verticalAlign: "top"
-                      }}
-                      id={`outcomesoundtitle ${this.props.depthNumber} - ${
-                        this.props.paragraphNumber
-                      } - ${k + 1}`}
-                    >
-                      {" "}
-                    </h5>
+                    {this.state.outcomeSoundArray[paragraphOutcomes.length] ? (
+                      <audio
+                        controls
+                        src={
+                          this.state.outcomeSoundArray[paragraphOutcomes.length]
+                            .outcomeSoundURL
+                            ? this.state.outcomeSoundArray[
+                                paragraphOutcomes.length
+                              ].outcomeSoundURL
+                            : null
+                        }
+                        style={{
+                          display: "inline-block",
+                          width: "140px",
+                          height: "15px",
+                          paddingBottom: "3px",
+                          paddingLeft: "5px"
+                        }}
+                        id={`outcomeSoundControls ${this.props.depthNumber} - ${
+                          this.props.paragraphNumber
+                        } - ${paragraphOutcomes.length}`}
+                      >
+                        Your browser does not support the
+                        <code>audio</code> element.
+                      </audio>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -373,20 +686,27 @@ class RiddleInput extends Component {
               (Upload Sound)
             </label>
           </p>
-          <h5
-            style={{
-              fontWeight: "400",
-              fontSize: "0.6rem",
-              lineHeight: 1,
-              paddingLeft: "5px",
-              display: "inline-block"
-            }}
-            id={`startingsoundtitle ${this.props.depthNumber} - ${
-              this.props.paragraphNumber
-            }`}
-          >
-            {" "}
-          </h5>
+          {this.state.startingSound || this.props.startingSoundURL ? (
+            <audio
+              controls
+              src={
+                this.props.startingSoundURL ? this.props.startingSoundURL : null
+              }
+              style={{
+                display: "inline-block",
+                width: "140px",
+                height: "15px",
+                paddingTop: "3px",
+                paddingLeft: "5px"
+              }}
+              id={`startingSoundControls ${this.props.depthNumber} - ${
+                this.props.paragraphNumber
+              }`}
+            >
+              Your browser does not support the
+              <code>audio</code> element.
+            </audio>
+          ) : null}
         </div>
         <div
           className="card-image"
@@ -422,7 +742,11 @@ class RiddleInput extends Component {
             style={{ width: "324px", height: "210px", position: "relative" }}
           >
             <img
-              src={DefaultRiddleQuestion}
+              src={
+                this.props.backgroundImageURL
+                  ? this.props.backgroundImageURL
+                  : DefaultRiddleQuestion
+              }
               className="card-img-top"
               alt="Background by default"
               style={{ width: "100%", height: "100%" }}
@@ -461,8 +785,8 @@ class RiddleInput extends Component {
                 placeholder="Write your riddle description here..."
                 rows="4"
                 required
-                onChange={this.onChange}
-                value={this.state.textInput}
+                onChange={this.onChangeInputText}
+                value={this.state.riddleInputText}
                 style={{ fontSize: "0.7rem", resize: "none" }}
               />
 
@@ -479,6 +803,7 @@ class RiddleInput extends Component {
                     {"   "}
                     <input
                       type="checkbox"
+                      checked={this.props.isTextualRiddle}
                       name="textualriddle"
                       onChange={this.setToTextualRiddle}
                     />
@@ -490,6 +815,7 @@ class RiddleInput extends Component {
                     {"   "}
                     <input
                       type="checkbox"
+                      checked={this.props.isGraphicalRiddle}
                       name="graphicalriddle"
                       onChange={this.setToGraphicalRiddle}
                     />
@@ -501,6 +827,24 @@ class RiddleInput extends Component {
           <div style={{ paddingLeft: "10px", paddingRight: "10px" }}>
             <div>{paragraphOutcomes}</div>
           </div>
+        </div>
+        <div style={{ marginTop: "5px" }}>
+          <input
+            type="submit"
+            value="Save Paragraph"
+            className="btn btn-dark paragraph-save"
+            style={{ display: "inline-block", width: "50%" }}
+            onClick={this.saveParagraph}
+          />
+
+          <input
+            type="submit"
+            value="Delete Paragraph"
+            paragraphnumber={this.props.paragraphNumber}
+            className="btn btn-dark paragraph-delete"
+            style={{ display: "inline-block", width: "50%" }}
+            onClick={this.props.deleteParagraph}
+          />
         </div>
       </div>
     );

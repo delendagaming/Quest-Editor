@@ -57,7 +57,7 @@ class App extends Component {
               />
               <Route
                 exact
-                path="/questeditor/builder/new"
+                path="/questeditor/questbuilder/:id"
                 component={UserIsAuthenticated(QuestBuilder)}
               />
               <Route

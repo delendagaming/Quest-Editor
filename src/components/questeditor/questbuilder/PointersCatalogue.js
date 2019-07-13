@@ -40,7 +40,10 @@ export default class PointersCatalogue extends Component {
       pointerArray: pointerArrayWithSelection
     });
 
-    this.props.selectPointer(this.props.rank, e.currentTarget.children[0].src);
+    this.props.selectPointer(
+      this.props.rankinnextparagraphs,
+      e.currentTarget.children[0].src
+    );
   };
 
   render() {

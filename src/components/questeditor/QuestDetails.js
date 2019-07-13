@@ -85,7 +85,9 @@ class QuestDetails extends Component {
               style={{ paddingLeft: "10px", paddingRight: "10px" }}
             >
               <div className="form-group col-md-6">
-                <label htmlFor="QuestTitle">Title</label>
+                <label className="label-parameter" htmlFor="QuestTitle">
+                  Title
+                </label>
                 <input
                   type="text"
                   className="form-control"
@@ -97,7 +99,9 @@ class QuestDetails extends Component {
                 />
               </div>
               <div className="form-group col-md-6">
-                <label htmlFor="QuestTags">Tags</label>
+                <label className="label-parameter" htmlFor="QuestTags">
+                  Tags
+                </label>
                 <input
                   type="text"
                   className="form-control"
@@ -114,7 +118,9 @@ class QuestDetails extends Component {
               style={{ paddingLeft: "10px", paddingRight: "10px" }}
             >
               <div className="form-group col-md-6">
-                <label htmlFor="QuestPrice">Price</label>
+                <label className="label-parameter" htmlFor="QuestPrice">
+                  Price
+                </label>
                 <input
                   type="text"
                   className="form-control"
@@ -126,7 +132,9 @@ class QuestDetails extends Component {
                 />
               </div>
               <div className="form-group col-md-6">
-                <label htmlFor="QuestLevel">Level</label>
+                <label className="label-parameter" htmlFor="QuestLevel">
+                  Level
+                </label>
                 <input
                   type="text"
                   className="form-control"
@@ -143,7 +151,9 @@ class QuestDetails extends Component {
               style={{ paddingLeft: "10px", paddingRight: "10px" }}
             >
               <div className="form-group col-md-6">
-                <label htmlFor="QuestLink">Link</label>
+                <label className="label-parameter" htmlFor="QuestLink">
+                  Link
+                </label>
                 <input
                   type="text"
                   className="form-control"
@@ -155,7 +165,9 @@ class QuestDetails extends Component {
                 />
               </div>
               <div className="form-group col-md-6">
-                <label htmlFor="QuestLocation">Location</label>
+                <label className="label-parameter" htmlFor="QuestLocation">
+                  Location
+                </label>
                 <input
                   type="text"
                   className="form-control"
@@ -175,7 +187,9 @@ class QuestDetails extends Component {
                 paddingBottom: "10px"
               }}
             >
-              <label htmlFor="Text">Summary</label>
+              <label className="label-parameter" htmlFor="Text">
+                Summary
+              </label>
               <textarea
                 type="text"
                 className="form-control"
