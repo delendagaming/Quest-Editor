@@ -89,6 +89,7 @@ class QuestsInProgress extends Component {
     let questInProgress = {
       ...this.props.questsInProgress.find(el => el.id === id)
     };
+    console.log(JSON.stringify(questInProgress));
 
     if (questInProgress.globalSaveCounter !== 1) {
       window.alert(

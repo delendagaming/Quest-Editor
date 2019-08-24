@@ -335,7 +335,11 @@ class Paragraph extends Component {
           } - ${this.props.paragraphNumber}`,
           backgroundImage,
           null,
-          { name: "backgroundImage" }
+          {
+            name: `backgroundImage${backgroundImage.name.substring(
+              backgroundImage.name.lastIndexOf(".")
+            )}`
+          }
         );
         let gsReference = await storage.refFromURL(
           `gs://${snapshot.uploadTaskSnapshot.metadata.bucket}/${
@@ -358,7 +362,11 @@ class Paragraph extends Component {
           } - ${this.props.paragraphNumber}`,
           startingSound,
           null,
-          { name: "startingSound" }
+          {
+            name: `startingSound${startingSound.name.substring(
+              startingSound.name.lastIndexOf(".")
+            )}`
+          }
         );
         let gsReference = await storage.refFromURL(
           `gs://${snapshot.uploadTaskSnapshot.metadata.bucket}/${
@@ -389,7 +397,13 @@ class Paragraph extends Component {
             } - ${this.props.paragraphNumber}/Outcomes/Sounds`,
             outcomeSound.outcomeSound,
             null,
-            { name: `outcomeSound ${outcomeSound.rankInNextParagraphs}` }
+            {
+              name: `outcomeSound_${
+                outcomeSound.rankInNextParagraphs
+              }${outcomeSound.outcomeSound.name.substring(
+                outcomeSound.outcomeSound.name.lastIndexOf(".")
+              )}`
+            }
           );
           let gsReference = await storage.refFromURL(
             `gs://${snapshot.uploadTaskSnapshot.metadata.bucket}/${
@@ -454,7 +468,13 @@ class Paragraph extends Component {
             } - ${this.props.paragraphNumber}/Outcomes/Images`,
             outcomeImage.outcomeImage,
             null,
-            { name: `outcomeImage ${outcomeImage.rankInNextParagraphs}` }
+            {
+              name: `outcomeImage_${
+                outcomeImage.rankInNextParagraphs
+              }${outcomeImage.outcomeImage.name.substring(
+                outcomeImage.outcomeImage.name.lastIndexOf(".")
+              )}`
+            }
           );
           let gsReference = await storage.refFromURL(
             `gs://${snapshot.uploadTaskSnapshot.metadata.bucket}/${
