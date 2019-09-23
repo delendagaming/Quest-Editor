@@ -4,7 +4,21 @@ import PropTypes from "prop-types";
 import { compose } from "redux";
 import { connect } from "react-redux";
 import { firestoreConnect } from "react-redux-firebase";
-import Web3 from "C:/Users/AXlHT/AppData/Roaming/npm/node_modules/web3/src/index";
+import Web3 from "web3";
+
+import { ethers } from "ethers";
+import {
+  NonceTxMiddleware,
+  SignedEthTxMiddleware,
+  CryptoUtils,
+  Client,
+  LoomProvider,
+  Address,
+  LocalAddress,
+  Contracts,
+  EthersSigner,
+  createDefaultTxMiddleware
+} from "loom-js";
 
 import Spinner from "../layout/Spinner";
 import Admins from "../auth/Admin";
@@ -16,7 +30,22 @@ require("firebase/functions");
 class QuestsSubmitted extends Component {
   state = {
     questsSubmittedTotal: null,
-    questsSubmittedFromScribeTotal: null
+    questsSubmittedFromScribeTotal: null,
+    loom: {
+      counter: 0,
+      pending: true,
+      web3js: null,
+      chainId: "extdev-plasma-us1",
+      writeUrl: "wss://extdev-plasma-us1.dappchains.com/websocket",
+      readUrl: "wss://extdev-plasma-us1.dappchains.com/queryws",
+      networkId: 9545242630824,
+      callerChainId: "eth",
+      ethAddress: null,
+      client: null,
+      loomProvider: null,
+      contract: null,
+      publicKey: null
+    }
   };
 
   // Filter quests submitted by ScribeID and determine total number of quests submitted from the scribe
@@ -38,6 +67,130 @@ class QuestsSubmitted extends Component {
       };
     }
     return null;
+  }
+
+  async componentDidMount() {
+    // initiate web3
+    let web3js;
+    if (window.ethereum) {
+      window.web3 = new Web3(window.ethereum);
+      web3js = new Web3(window.ethereum);
+      await window.ethereum.enable();
+    } else if (window.web3) {
+      await window.web3.currentProvider.enable();
+      window.web3 = new Web3(window.web3.currentProvider);
+      console.log(window.web3);
+      web3js = new Web3(window.web3.currentProvider);
+      console.log(web3js);
+    } else {
+      console.log("Metamask is not Enabled");
+    }
+    if (web3js) {
+      const newLoom = this.state.loom;
+      newLoom.web3js = web3js;
+
+      await this.setState({
+        loom: newLoom
+      });
+    }
+
+    console.log(this.state.loom);
+
+    // initiate loom
+    const privateKey = CryptoUtils.generatePrivateKey();
+    const newLoom2 = this.state.loom;
+    newLoom2.publicKey = CryptoUtils.publicKeyFromPrivateKey(privateKey);
+    await this.setState({
+      loom: newLoom2
+    });
+
+    const client = new Client(
+      this.state.loom.chainId,
+      this.state.loom.writeUrl,
+      this.state.loom.readUrl
+    );
+    const newLoom3 = this.state.loom;
+    newLoom3.client = client;
+    await this.setState({
+      loom: newLoom3
+    });
+
+    console.log(this.state.loom.client);
+
+    const ethersProvider = new ethers.providers.Web3Provider(
+      this.state.loom.web3js.currentProvider
+    );
+    const signer = ethersProvider.getSigner();
+    const ethAddress = await signer.getAddress();
+
+    const newLoom4 = this.state.loom;
+    newLoom4.ethAddress = ethAddress;
+
+    await this.setState({
+      loom: newLoom4
+    });
+
+    const to = new Address(
+      this.state.loom.callerChainId,
+      LocalAddress.fromHexString(this.state.loom.ethAddress)
+    );
+    const from = new Address(
+      this.state.loom.client.chainId,
+      LocalAddress.fromPublicKey(this.state.loom.publicKey)
+    );
+
+    const txMiddleware = createDefaultTxMiddleware(
+      this.state.loom.client,
+      privateKey
+    );
+
+    const newLoom5 = this.state.loom;
+    newLoom5.client.txMiddleware = txMiddleware;
+
+    await this.setState({
+      loom: newLoom5
+    });
+
+    console.log("OK here");
+    console.log(this.state.loom.client);
+
+    const addressMapper = await Contracts.AddressMapper.createAsync(
+      this.state.loom.client,
+      from
+    );
+
+    console.log("OK here");
+
+    if (await addressMapper.hasMappingAsync(to)) {
+      console.log("Mapping already exists.");
+    } else {
+      console.log("Adding a new mapping.");
+      const ethersSigner = new EthersSigner(signer);
+      await addressMapper.addIdentityMappingAsync(from, to, ethersSigner);
+    }
+
+    console.log("OK here");
+
+    const newLoom6 = this.state.loom;
+    newLoom6.loomProvider = new LoomProvider(
+      this.state.loom.client,
+      privateKey
+    );
+
+    await this.setState({
+      loom: newLoom6
+    });
+
+    const newLoom7 = this.state.loom;
+    newLoom7.loomProvider.callerChainId = this.state.loom.callerChainId;
+
+    await this.setState({
+      loom: newLoom7
+    });
+    this.state.loom.loomProvider.setMiddlewaresForAddress(to.local.toString(), [
+      new NonceTxMiddleware(to, this.state.loom.client),
+      new SignedEthTxMiddleware(signer)
+    ]);
   }
 
   onGenerateVerifier = async e => {
@@ -119,76 +272,6 @@ class QuestsSubmitted extends Component {
     // create circuit.circom file in local storage and save in Firebase storage
 
     const firebase = this.props.firebase;
-    /*
-    let circuit = `include "../srv/node_modules/circomlib/circuits/gates.circom";
-    include "../srv/node_modules/circomlib/circuits/comparators.circom";
-    
-    template Quest(n) {
-        signal private input moves[n];
-        signal victory;
-        signal alive;
-        signal pathcheck;
-        signal output outcome;
-       
-    
-        var paragraphsMapping = [${paragraphsMappingString}];
-        //var paragraphsMappingLength = 11;
-        var outcomeArrayLengths = [${outcomeArrayLengths}];
-       // var outcomeExists = 0;
-        //var victoryVar = 0;
-        //var aliveVar = 1;
-    
-    
-       var countercheck = 0;
-       var movesnumber = 0;
-    
-        for (var j=0; j<n; j++) {
-    
-            if(moves[j] > 0) {
-                movesnumber++;
-    
-                for (var k=0 ; k < outcomeArrayLengths[j]; k++ ) {
-                    
-                    if (moves[j] == paragraphsMapping[j][k]) {
-                        countercheck++;
-                    }
-                }
-    
-            }
-    
-        }
-    
-        pathcheck <-- (countercheck == movesnumber);
-        pathcheck === 1;
-    
-    
-    
-    //check if player reached victory or sudden death paragraph
-        for (var i = 0; i < n; i++) {
-           if( moves[i] > 0 && paragraphsMapping[i][0] == 777) {
-               victory <-- 1;
-               alive <-- 1;
-           } 
-    
-            if( moves[i] > 0 && paragraphsMapping[i][0] == 666) {
-               alive <-- 0;
-               victory <-- 0;
-           }  
-        }
-    
-     
-    
-        component and1 = AND();
-        and1.a <-- alive;
-        and1.b <-- victory;
-        outcome <-- and1.out;
-    
-        outcome === 1;
-    
-    }
-    
-    component main = Quest(${paragraphsMapping.length});`;
-*/
 
     let circuit = `
     
@@ -301,30 +384,38 @@ class QuestsSubmitted extends Component {
       .functions()
       .httpsCallable("deployVerifierContract");
     let compilation = await deployVerifierContract(this.state.verifierCode);
-
+    console.log(compilation);
     await this.setState({ contractInterface: compilation.data.interface });
 
-    const web3 = new Web3(window.web3.currentProvider);
+    //const web3 = new Web3(window.web3.currentProvider);
+    const web3 = new Web3(this.state.loom.loomProvider);
+    // deploy contract and save address
 
-    // get account, deploy contract and save address
+    const contract = await new web3.eth.Contract(
+      JSON.parse(compilation.data.interface)
+    );
+    console.log(contract);
+    contract.setProvider(this.state.loom.loomProvider);
 
-    const deploy = async () => {
-      const accounts = await web3.eth.getAccounts();
-      console.log(accounts);
+    const accounts = await web3.eth.getAccounts();
+    console.log(accounts);
 
-      console.log("Attempting to deploy from account ", accounts[0]);
-
+    //console.log("Attempting to deploy from account ", accounts[0]);
+    /*
       const result = await new web3.eth.Contract(
         JSON.parse(compilation.data.interface)
       )
         .deploy({ data: compilation.data.bytecode })
         .send({ gas: "2000000", from: accounts[0] });
+*/
 
-      console.log("Contract deployed to ", result.options.address);
-      return result.options.address;
-    };
+    const result = await contract
+      .deploy({ data: compilation.data.bytecode })
+      .send({ from: accounts[0] });
 
-    let address = await deploy();
+    console.log("Contract deployed to ", result.options.address);
+
+    let address = result.options.address;
 
     // save contract address in Firestore and success message
 
@@ -347,23 +438,7 @@ class QuestsSubmitted extends Component {
     userInput = userInput.toString();
     let movesArray = [];
 
-    /* if (
-        userInput.substring(i, i + 1) === "6" &&
-        userInput.substring(i + 1, i + 2) === "6" &&
-        userInput.substring(i + 2, i + 3) === "6"
-      ) {
-        movesArray.push("666");
-        i = i + 2;
-      } else if (
-        userInput.substring(i, i + 1) === "7" &&
-        userInput.substring(i + 1, i + 2) === "7" &&
-        userInput.substring(i + 2, i + 3) === "7"
-      ) {
-        movesArray.push("777");
-        i = i + 2;
-      } else*/ movesArray = userInput.split(
-      " "
-    );
+    movesArray = userInput.split(" ");
 
     let gap = this.state.mappingLength - movesArray.length;
 
@@ -423,13 +498,17 @@ class QuestsSubmitted extends Component {
     // get Verifier contract address from Firebase database then send call to it
 
     let address = questSubmitted.verifierContractAddress;
-    const web3 = new Web3(window.web3.currentProvider);
+
+    //const web3 = new Web3(window.web3.currentProvider);
+    const web3 = new Web3(this.state.loom.loomProvider);
+    const accounts = await web3.eth.getAccounts();
+    console.log(accounts);
 
     let verifierContract = await new web3.eth.Contract(
       JSON.parse(this.state.contractInterface),
       address
     );
-    verifierContract.setProvider(window.web3.currentProvider);
+    verifierContract.setProvider(this.state.loom.loomProvider);
 
     // return result and show it in window.alert
 
@@ -438,7 +517,7 @@ class QuestsSubmitted extends Component {
 
     const check = await verifierContract.methods
       .verifyProof(...argumentsForCall)
-      .call();
+      .call({ from: accounts[1] });
 
     window.alert(check);
 
@@ -490,12 +569,12 @@ class QuestsSubmitted extends Component {
     } = this.state;
 
     // get authorization to connect to user wallet and instantiate web3
-
+    /*
     const getProvider = async () => {
       await window.web3.currentProvider.enable(); // request authentication
     };
     getProvider();
-
+*/
     if (questsSubmittedFromScribe) {
       return (
         <div

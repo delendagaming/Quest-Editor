@@ -15,7 +15,6 @@ import QuestBuilder from "./components/questeditor/questbuilder/QuestBuilder";
 import QuestDetails from "./components/questeditor/QuestDetails";
 import Login from "./components/auth/Login";
 import Register from "./components/auth/Register";
-import AppComponent from "./components/TestChildClick";
 
 class App extends Component {
   render() {
@@ -64,11 +63,6 @@ class App extends Component {
                 exact
                 path="/questeditor/details/:id"
                 component={UserIsAuthenticated(QuestDetails)}
-              />
-              <Route
-                exact
-                path="/appcomponent"
-                component={UserIsAuthenticated(AppComponent)}
               />
             </Switch>
           </div>
