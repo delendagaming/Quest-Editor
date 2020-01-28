@@ -5,6 +5,8 @@ import { compose } from "redux";
 import { connect } from "react-redux";
 import { firestoreConnect } from "react-redux-firebase";
 import Web3 from "web3";
+import ipfsClient from "ipfs-http-client";
+import snarkjs from "snarkjs";
 
 import { ethers } from "ethers";
 import {
@@ -94,8 +96,6 @@ class QuestsSubmitted extends Component {
       });
     }
 
-    console.log(this.state.loom);
-
     // initiate loom
     const privateKey = CryptoUtils.generatePrivateKey();
     const newLoom2 = this.state.loom;
@@ -114,8 +114,6 @@ class QuestsSubmitted extends Component {
     await this.setState({
       loom: newLoom3
     });
-
-    console.log(this.state.loom.client);
 
     const ethersProvider = new ethers.providers.Web3Provider(
       this.state.loom.web3js.currentProvider
@@ -151,15 +149,10 @@ class QuestsSubmitted extends Component {
       loom: newLoom5
     });
 
-    console.log("OK here");
-    console.log(this.state.loom.client);
-
     const addressMapper = await Contracts.AddressMapper.createAsync(
       this.state.loom.client,
       from
     );
-
-    console.log("OK here");
 
     if (await addressMapper.hasMappingAsync(to)) {
       console.log("Mapping already exists.");
@@ -168,8 +161,6 @@ class QuestsSubmitted extends Component {
       const ethersSigner = new EthersSigner(signer);
       await addressMapper.addIdentityMappingAsync(from, to, ethersSigner);
     }
-
-    console.log("OK here");
 
     const newLoom6 = this.state.loom;
     newLoom6.loomProvider = new LoomProvider(
@@ -320,8 +311,6 @@ class QuestsSubmitted extends Component {
       .httpsCallable("generateAndDeployVerifier");
     let response = await generateAndDeployVerifierCF(circuit);
 
-    console.log(response.data);
-
     var file1 = new File([response.data.verifierCode], "verifier.sol");
     firebase.uploadFile(id, file1, null, {
       name: "verifier.sol"
@@ -338,6 +327,9 @@ class QuestsSubmitted extends Component {
       provingKey: response.data.provingKey,
       verificationKey: response.data.verificationKey
     });
+
+    console.log(response.data.verifierCode);
+
     window.alert("Verifier contract created and saved !");
   };
 
@@ -352,7 +344,7 @@ class QuestsSubmitted extends Component {
       ...this.props.questsSubmitted.find(el => el.id === id)
     };
 
-    if (questSubmitted.verifierContractAddress != undefined) {
+    if (questSubmitted.verifierContractAddress !== undefined) {
       if (
         !window.confirm(
           `A Verifier contract has already been deployed at the address ${questSubmitted.verifierContractAddress}. Are you sure you want to deploy a Verifier contract again for this Quest ?`
@@ -384,7 +376,6 @@ class QuestsSubmitted extends Component {
       .functions()
       .httpsCallable("deployVerifierContract");
     let compilation = await deployVerifierContract(this.state.verifierCode);
-    console.log(compilation);
     await this.setState({ contractInterface: compilation.data.interface });
 
     //const web3 = new Web3(window.web3.currentProvider);
@@ -394,7 +385,6 @@ class QuestsSubmitted extends Component {
     const contract = await new web3.eth.Contract(
       JSON.parse(compilation.data.interface)
     );
-    console.log(contract);
     contract.setProvider(this.state.loom.loomProvider);
 
     const accounts = await web3.eth.getAccounts();
@@ -415,18 +405,352 @@ class QuestsSubmitted extends Component {
 
     console.log("Contract deployed to ", result.options.address);
 
-    let address = result.options.address;
+    let verifierContractAddress = result.options.address;
 
-    // save contract address in Firestore and success message
+    // save contract address in Firestore
 
     await this.props.firestore.update(
       { collection: "QuestsSubmitted", doc: id },
       {
-        verifierContractAddress: address
+        verifierContractAddress: verifierContractAddress
       }
     );
 
-    window.alert(`Contract deployed at address ${address} !`);
+    // updating the questSubmitted object in case verifierContractAddress was changed
+    questSubmitted = {
+      ...this.props.questsSubmitted.find(el => el.id === id)
+    };
+
+    //Connecting to the ipfs network via infura gateway
+    const ipfs = ipfsClient("ipfs.infura.io", "5001", { protocol: "https" });
+
+    // uploading questObject to IPFS and recovering URL
+
+    const questObjectString = JSON.stringify(questSubmitted);
+    console.log(questObjectString);
+
+    const questObjectBuffer = Buffer.from(questObjectString);
+    console.log(questObjectBuffer);
+
+    const resultsQuestObject = await ipfs.add(questObjectBuffer);
+    const hashQuestObject = resultsQuestObject[0].hash;
+    const questObjectURLonIPFS = `https://gateway.ipfs.io/ipfs/${hashQuestObject}`;
+
+    console.log(questObjectURLonIPFS);
+
+    // uploading cirDef to IPFS and recovering URL
+
+    const cirDefString = JSON.stringify(this.state.cirDef);
+    console.log(cirDefString);
+
+    const cirDefBuffer = Buffer.from(cirDefString);
+    console.log(cirDefBuffer);
+
+    const resultsCirDef = await ipfs.add(cirDefBuffer);
+    const hashCirDef = resultsCirDef[0].hash;
+    const cirDefURLonIPFS = `https://gateway.ipfs.io/ipfs/${hashCirDef}`;
+
+    console.log(cirDefURLonIPFS);
+
+    // uploading provingKey to IPFS and recovering URL
+
+    const provingKeyString = this.state.provingKey;
+    console.log(provingKeyString);
+
+    const provingKeyBuffer = Buffer.from(provingKeyString);
+    console.log(provingKeyBuffer);
+
+    const resultsProvingKey = await ipfs.add(provingKeyBuffer);
+    const hashProvingKey = resultsProvingKey[0].hash;
+    const provingKeyURLonIPFS = `https://gateway.ipfs.io/ipfs/${hashProvingKey}`;
+
+    console.log(provingKeyURLonIPFS);
+
+    // initialize controller contract (deployed on extdev)
+    const controllerContractAddress = window.prompt(
+      "Please enter the address of the Controller Contract"
+    ); // to get from console in truffle contracts deployment script (ubuntu)
+
+    const contractInterface = [
+      {
+        constant: true,
+        inputs: [
+          {
+            name: "",
+            type: "bytes32"
+          }
+        ],
+        name: "questRegister",
+        outputs: [
+          {
+            name: "creator",
+            type: "address"
+          },
+          {
+            name: "identifier",
+            type: "string"
+          },
+          {
+            name: "verifierAddress",
+            type: "address"
+          },
+          {
+            name: "questPrice",
+            type: "uint256"
+          },
+          {
+            name: "questObjectURLonIPFS",
+            type: "string"
+          },
+          {
+            name: "cirDefURLonIPFS",
+            type: "string"
+          },
+          {
+            name: "provingKeyURLonIPFS",
+            type: "string"
+          }
+        ],
+        payable: false,
+        stateMutability: "view",
+        type: "function"
+      },
+      {
+        inputs: [
+          {
+            name: "ERC20input",
+            type: "address"
+          },
+          {
+            name: "ERC721input",
+            type: "address"
+          }
+        ],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "constructor"
+      },
+      {
+        anonymous: false,
+        inputs: [
+          {
+            indexed: false,
+            name: "payer",
+            type: "address"
+          },
+          {
+            indexed: false,
+            name: "recipient",
+            type: "address"
+          },
+          {
+            indexed: false,
+            name: "identifierForQuest",
+            type: "string"
+          }
+        ],
+        name: "paymentForQuest",
+        type: "event"
+      },
+      {
+        anonymous: false,
+        inputs: [
+          {
+            indexed: false,
+            name: "player",
+            type: "address"
+          },
+          {
+            indexed: false,
+            name: "questName",
+            type: "string"
+          },
+          {
+            indexed: false,
+            name: "tokenID",
+            type: "uint256"
+          }
+        ],
+        name: "victory",
+        type: "event"
+      },
+      {
+        anonymous: false,
+        inputs: [
+          {
+            indexed: false,
+            name: "player",
+            type: "address"
+          },
+          {
+            indexed: false,
+            name: "questName",
+            type: "string"
+          }
+        ],
+        name: "incorrectPath",
+        type: "event"
+      },
+      {
+        constant: true,
+        inputs: [
+          {
+            name: "questName",
+            type: "string"
+          }
+        ],
+        name: "getHash",
+        outputs: [
+          {
+            name: "",
+            type: "bytes32"
+          }
+        ],
+        payable: false,
+        stateMutability: "pure",
+        type: "function"
+      },
+      {
+        constant: false,
+        inputs: [
+          {
+            name: "questName",
+            type: "string"
+          },
+          {
+            name: "creatorInput",
+            type: "address"
+          },
+          {
+            name: "identifierInput",
+            type: "string"
+          },
+          {
+            name: "verifierInput",
+            type: "address"
+          },
+          {
+            name: "priceInput",
+            type: "uint256"
+          },
+          {
+            name: "questObjectURLinput",
+            type: "string"
+          },
+          {
+            name: "cirDefURLinput",
+            type: "string"
+          },
+          {
+            name: "provingKeyURLinput",
+            type: "string"
+          }
+        ],
+        name: "addEntry",
+        outputs: [],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "function"
+      },
+      {
+        constant: false,
+        inputs: [
+          {
+            name: "questName",
+            type: "string"
+          }
+        ],
+        name: "playerPayment",
+        outputs: [],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "function"
+      },
+      {
+        constant: false,
+        inputs: [
+          {
+            name: "questName",
+            type: "string"
+          },
+          {
+            name: "a",
+            type: "uint256[2]"
+          },
+          {
+            name: "a_p",
+            type: "uint256[2]"
+          },
+          {
+            name: "b",
+            type: "uint256[2][2]"
+          },
+          {
+            name: "b_p",
+            type: "uint256[2]"
+          },
+          {
+            name: "c",
+            type: "uint256[2]"
+          },
+          {
+            name: "c_p",
+            type: "uint256[2]"
+          },
+          {
+            name: "h",
+            type: "uint256[2]"
+          },
+          {
+            name: "k",
+            type: "uint256[2]"
+          },
+          {
+            name: "input",
+            type: "uint256[1]"
+          }
+        ],
+        name: "checkAndMint",
+        outputs: [],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "function"
+      },
+      {
+        constant: false,
+        inputs: [],
+        name: "abandonCurrentQuest",
+        outputs: [],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "function"
+      }
+    ];
+
+    let controllerContract = await new web3.eth.Contract(
+      contractInterface,
+      controllerContractAddress
+    );
+    controllerContract.setProvider(this.state.loom.loomProvider);
+
+    try {
+      await controllerContract.methods
+        .addEntry(
+          questSubmitted.Title,
+          questSubmitted.ScribeLoomAddress,
+          questSubmitted.id,
+          verifierContractAddress,
+          parseInt(questSubmitted.Price),
+          questObjectURLonIPFS,
+          cirDefURLonIPFS,
+          provingKeyURLonIPFS
+        )
+        .send({ from: accounts[1] });
+    } catch (err) {
+      console.log(`Transaction failed : ${err}`);
+    }
+
+    window.alert(`Verifier entry added to Quest Register !`);
   };
 
   onGenerateInputProofAndVerify = async e => {
@@ -522,6 +846,1454 @@ class QuestsSubmitted extends Component {
     window.alert(check);
 
     // clear state
+  };
+
+  onLaunchPayment = async e => {
+    const web3 = new Web3(this.state.loom.loomProvider);
+
+    const accounts = await web3.eth.getAccounts();
+
+    const questName = window.prompt(
+      "Enter the name of the quest you wish to purchase"
+    );
+
+    // initialize QuestToken contract (deployed on extdev)
+
+    const questTokenContractAddress = window.prompt(
+      "Please enter the address of the QuestToken Contract"
+    ); // to get from console in truffle contracts deployment script (ubuntu)
+
+    const questTokenContractInterface = [
+      {
+        constant: true,
+        inputs: [],
+        name: "name",
+        outputs: [
+          {
+            name: "",
+            type: "string"
+          }
+        ],
+        payable: false,
+        stateMutability: "view",
+        type: "function"
+      },
+      {
+        constant: false,
+        inputs: [
+          {
+            name: "spender",
+            type: "address"
+          },
+          {
+            name: "value",
+            type: "uint256"
+          }
+        ],
+        name: "approve",
+        outputs: [
+          {
+            name: "",
+            type: "bool"
+          }
+        ],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "function"
+      },
+      {
+        constant: true,
+        inputs: [],
+        name: "gateway",
+        outputs: [
+          {
+            name: "",
+            type: "address"
+          }
+        ],
+        payable: false,
+        stateMutability: "view",
+        type: "function"
+      },
+      {
+        constant: true,
+        inputs: [],
+        name: "totalSupply",
+        outputs: [
+          {
+            name: "",
+            type: "uint256"
+          }
+        ],
+        payable: false,
+        stateMutability: "view",
+        type: "function"
+      },
+      {
+        constant: false,
+        inputs: [
+          {
+            name: "sender",
+            type: "address"
+          },
+          {
+            name: "recipient",
+            type: "address"
+          },
+          {
+            name: "amount",
+            type: "uint256"
+          }
+        ],
+        name: "transferFrom",
+        outputs: [
+          {
+            name: "",
+            type: "bool"
+          }
+        ],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "function"
+      },
+      {
+        constant: true,
+        inputs: [],
+        name: "decimals",
+        outputs: [
+          {
+            name: "",
+            type: "uint8"
+          }
+        ],
+        payable: false,
+        stateMutability: "view",
+        type: "function"
+      },
+      {
+        constant: false,
+        inputs: [
+          {
+            name: "spender",
+            type: "address"
+          },
+          {
+            name: "addedValue",
+            type: "uint256"
+          }
+        ],
+        name: "increaseAllowance",
+        outputs: [
+          {
+            name: "",
+            type: "bool"
+          }
+        ],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "function"
+      },
+      {
+        constant: true,
+        inputs: [
+          {
+            name: "account",
+            type: "address"
+          }
+        ],
+        name: "balanceOf",
+        outputs: [
+          {
+            name: "",
+            type: "uint256"
+          }
+        ],
+        payable: false,
+        stateMutability: "view",
+        type: "function"
+      },
+      {
+        constant: true,
+        inputs: [],
+        name: "symbol",
+        outputs: [
+          {
+            name: "",
+            type: "string"
+          }
+        ],
+        payable: false,
+        stateMutability: "view",
+        type: "function"
+      },
+      {
+        constant: false,
+        inputs: [
+          {
+            name: "spender",
+            type: "address"
+          },
+          {
+            name: "subtractedValue",
+            type: "uint256"
+          }
+        ],
+        name: "decreaseAllowance",
+        outputs: [
+          {
+            name: "",
+            type: "bool"
+          }
+        ],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "function"
+      },
+      {
+        constant: false,
+        inputs: [
+          {
+            name: "recipient",
+            type: "address"
+          },
+          {
+            name: "amount",
+            type: "uint256"
+          }
+        ],
+        name: "transfer",
+        outputs: [
+          {
+            name: "",
+            type: "bool"
+          }
+        ],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "function"
+      },
+      {
+        constant: true,
+        inputs: [
+          {
+            name: "owner",
+            type: "address"
+          },
+          {
+            name: "spender",
+            type: "address"
+          }
+        ],
+        name: "allowance",
+        outputs: [
+          {
+            name: "",
+            type: "uint256"
+          }
+        ],
+        payable: false,
+        stateMutability: "view",
+        type: "function"
+      },
+      {
+        inputs: [
+          {
+            name: "_gateway",
+            type: "address"
+          }
+        ],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "constructor"
+      },
+      {
+        anonymous: false,
+        inputs: [
+          {
+            indexed: true,
+            name: "from",
+            type: "address"
+          },
+          {
+            indexed: true,
+            name: "to",
+            type: "address"
+          },
+          {
+            indexed: false,
+            name: "value",
+            type: "uint256"
+          }
+        ],
+        name: "Transfer",
+        type: "event"
+      },
+      {
+        anonymous: false,
+        inputs: [
+          {
+            indexed: true,
+            name: "owner",
+            type: "address"
+          },
+          {
+            indexed: true,
+            name: "spender",
+            type: "address"
+          },
+          {
+            indexed: false,
+            name: "value",
+            type: "uint256"
+          }
+        ],
+        name: "Approval",
+        type: "event"
+      },
+      {
+        constant: false,
+        inputs: [
+          {
+            name: "_amount",
+            type: "uint256"
+          }
+        ],
+        name: "mintToGateway",
+        outputs: [],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "function"
+      }
+    ];
+
+    let questTokenContract = await new web3.eth.Contract(
+      questTokenContractInterface,
+      questTokenContractAddress
+    );
+    questTokenContract.setProvider(this.state.loom.loomProvider);
+
+    // initialize controller contract (deployed on extdev)
+    const controllerContractAddress = window.prompt(
+      "Please enter the address of the Controller Contract"
+    ); // to get from console in truffle contracts deployment script (ubuntu)
+
+    const controllerContractInterface = [
+      {
+        constant: true,
+        inputs: [
+          {
+            name: "",
+            type: "bytes32"
+          }
+        ],
+        name: "questRegister",
+        outputs: [
+          {
+            name: "creator",
+            type: "address"
+          },
+          {
+            name: "identifier",
+            type: "string"
+          },
+          {
+            name: "verifierAddress",
+            type: "address"
+          },
+          {
+            name: "questPrice",
+            type: "uint256"
+          },
+          {
+            name: "questObjectURLonIPFS",
+            type: "string"
+          },
+          {
+            name: "cirDefURLonIPFS",
+            type: "string"
+          },
+          {
+            name: "provingKeyURLonIPFS",
+            type: "string"
+          }
+        ],
+        payable: false,
+        stateMutability: "view",
+        type: "function"
+      },
+      {
+        inputs: [
+          {
+            name: "ERC20input",
+            type: "address"
+          },
+          {
+            name: "ERC721input",
+            type: "address"
+          }
+        ],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "constructor"
+      },
+      {
+        anonymous: false,
+        inputs: [
+          {
+            indexed: false,
+            name: "payer",
+            type: "address"
+          },
+          {
+            indexed: false,
+            name: "recipient",
+            type: "address"
+          },
+          {
+            indexed: false,
+            name: "identifierForQuest",
+            type: "string"
+          }
+        ],
+        name: "paymentForQuest",
+        type: "event"
+      },
+      {
+        anonymous: false,
+        inputs: [
+          {
+            indexed: false,
+            name: "player",
+            type: "address"
+          },
+          {
+            indexed: false,
+            name: "questName",
+            type: "string"
+          },
+          {
+            indexed: false,
+            name: "tokenID",
+            type: "uint256"
+          }
+        ],
+        name: "victory",
+        type: "event"
+      },
+      {
+        anonymous: false,
+        inputs: [
+          {
+            indexed: false,
+            name: "player",
+            type: "address"
+          },
+          {
+            indexed: false,
+            name: "questName",
+            type: "string"
+          }
+        ],
+        name: "incorrectPath",
+        type: "event"
+      },
+      {
+        constant: true,
+        inputs: [
+          {
+            name: "questName",
+            type: "string"
+          }
+        ],
+        name: "getHash",
+        outputs: [
+          {
+            name: "",
+            type: "bytes32"
+          }
+        ],
+        payable: false,
+        stateMutability: "pure",
+        type: "function"
+      },
+      {
+        constant: false,
+        inputs: [
+          {
+            name: "questName",
+            type: "string"
+          },
+          {
+            name: "creatorInput",
+            type: "address"
+          },
+          {
+            name: "identifierInput",
+            type: "string"
+          },
+          {
+            name: "verifierInput",
+            type: "address"
+          },
+          {
+            name: "priceInput",
+            type: "uint256"
+          },
+          {
+            name: "questObjectURLinput",
+            type: "string"
+          },
+          {
+            name: "cirDefURLinput",
+            type: "string"
+          },
+          {
+            name: "provingKeyURLinput",
+            type: "string"
+          }
+        ],
+        name: "addEntry",
+        outputs: [],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "function"
+      },
+      {
+        constant: false,
+        inputs: [
+          {
+            name: "questName",
+            type: "string"
+          }
+        ],
+        name: "playerPayment",
+        outputs: [],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "function"
+      },
+      {
+        constant: false,
+        inputs: [
+          {
+            name: "questName",
+            type: "string"
+          },
+          {
+            name: "a",
+            type: "uint256[2]"
+          },
+          {
+            name: "a_p",
+            type: "uint256[2]"
+          },
+          {
+            name: "b",
+            type: "uint256[2][2]"
+          },
+          {
+            name: "b_p",
+            type: "uint256[2]"
+          },
+          {
+            name: "c",
+            type: "uint256[2]"
+          },
+          {
+            name: "c_p",
+            type: "uint256[2]"
+          },
+          {
+            name: "h",
+            type: "uint256[2]"
+          },
+          {
+            name: "k",
+            type: "uint256[2]"
+          },
+          {
+            name: "input",
+            type: "uint256[1]"
+          }
+        ],
+        name: "checkAndMint",
+        outputs: [],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "function"
+      },
+      {
+        constant: false,
+        inputs: [],
+        name: "abandonCurrentQuest",
+        outputs: [],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "function"
+      }
+    ];
+
+    let controllerContract = await new web3.eth.Contract(
+      controllerContractInterface,
+      controllerContractAddress
+    );
+    controllerContract.setProvider(this.state.loom.loomProvider);
+
+    // listening to payment event
+
+    controllerContract.once("paymentForQuest", function(err, result) {
+      if (err) {
+        console.log(`Payment failed : ${err}`); // --> to use in loading screen
+      }
+      console.log("Payment to Quest Creator successful"); // --> to use in loading screen
+    });
+
+    // get hash of quest name
+
+    let questNameHash;
+
+    try {
+      questNameHash = await controllerContract.methods
+        .getHash(questName)
+        .call({ from: accounts[1] });
+    } catch (err) {
+      console.log(`Hash of quest name could not be recovered : ${err}`);
+    }
+
+    // get quest entry from quest register
+
+    let questEntry;
+
+    try {
+      questEntry = await controllerContract.methods
+        .questRegister(questNameHash)
+        .call({ from: accounts[1] });
+    } catch (err) {
+      console.log(
+        `Quest Entry could not be recovered from Quest Register : ${err}`
+      );
+    }
+
+    // increase allowance of tokens to Quest Controller contract
+
+    try {
+      await questTokenContract.methods
+        .approve(controllerContractAddress, parseInt(questEntry.questPrice))
+        .send({ from: accounts[1] });
+    } catch (err) {
+      console.log(
+        `Token allowance to Quest Controller contract could not be realized : ${err}`
+      );
+    }
+
+    // spend allowance of tokens towards creator
+
+    try {
+      console.log("Payment launched"); // --> to use in loading screen
+      await controllerContract.methods
+        .playerPayment(questName)
+        .send({ from: accounts[1] });
+    } catch (err) {
+      console.log(`Payment failed : ${err}`); // --> to use in loading screen
+    }
+  };
+
+  onSendSolution = async e => {
+    const web3 = new Web3(this.state.loom.loomProvider);
+    const accounts = await web3.eth.getAccounts();
+
+    // initialize controller contract (deployed on extdev)
+    const controllerContractAddress = window.prompt(
+      "Please enter the address of the Controller Contract"
+    ); // to get from console in truffle contracts deployment script (ubuntu)
+
+    const controllerContractInterface = [
+      {
+        constant: true,
+        inputs: [
+          {
+            name: "",
+            type: "bytes32"
+          }
+        ],
+        name: "questRegister",
+        outputs: [
+          {
+            name: "creator",
+            type: "address"
+          },
+          {
+            name: "identifier",
+            type: "string"
+          },
+          {
+            name: "verifierAddress",
+            type: "address"
+          },
+          {
+            name: "questPrice",
+            type: "uint256"
+          },
+          {
+            name: "questObjectURLonIPFS",
+            type: "string"
+          },
+          {
+            name: "cirDefURLonIPFS",
+            type: "string"
+          },
+          {
+            name: "provingKeyURLonIPFS",
+            type: "string"
+          }
+        ],
+        payable: false,
+        stateMutability: "view",
+        type: "function"
+      },
+      {
+        inputs: [
+          {
+            name: "ERC20input",
+            type: "address"
+          },
+          {
+            name: "ERC721input",
+            type: "address"
+          }
+        ],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "constructor"
+      },
+      {
+        anonymous: false,
+        inputs: [
+          {
+            indexed: false,
+            name: "payer",
+            type: "address"
+          },
+          {
+            indexed: false,
+            name: "recipient",
+            type: "address"
+          },
+          {
+            indexed: false,
+            name: "identifierForQuest",
+            type: "string"
+          }
+        ],
+        name: "paymentForQuest",
+        type: "event"
+      },
+      {
+        anonymous: false,
+        inputs: [
+          {
+            indexed: false,
+            name: "player",
+            type: "address"
+          },
+          {
+            indexed: false,
+            name: "questName",
+            type: "string"
+          },
+          {
+            indexed: false,
+            name: "tokenID",
+            type: "uint256"
+          }
+        ],
+        name: "victory",
+        type: "event"
+      },
+      {
+        anonymous: false,
+        inputs: [
+          {
+            indexed: false,
+            name: "player",
+            type: "address"
+          },
+          {
+            indexed: false,
+            name: "questName",
+            type: "string"
+          }
+        ],
+        name: "incorrectPath",
+        type: "event"
+      },
+      {
+        constant: true,
+        inputs: [
+          {
+            name: "questName",
+            type: "string"
+          }
+        ],
+        name: "getHash",
+        outputs: [
+          {
+            name: "",
+            type: "bytes32"
+          }
+        ],
+        payable: false,
+        stateMutability: "pure",
+        type: "function"
+      },
+      {
+        constant: false,
+        inputs: [
+          {
+            name: "questName",
+            type: "string"
+          },
+          {
+            name: "creatorInput",
+            type: "address"
+          },
+          {
+            name: "identifierInput",
+            type: "string"
+          },
+          {
+            name: "verifierInput",
+            type: "address"
+          },
+          {
+            name: "priceInput",
+            type: "uint256"
+          },
+          {
+            name: "questObjectURLinput",
+            type: "string"
+          },
+          {
+            name: "cirDefURLinput",
+            type: "string"
+          },
+          {
+            name: "provingKeyURLinput",
+            type: "string"
+          }
+        ],
+        name: "addEntry",
+        outputs: [],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "function"
+      },
+      {
+        constant: false,
+        inputs: [
+          {
+            name: "questName",
+            type: "string"
+          }
+        ],
+        name: "playerPayment",
+        outputs: [],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "function"
+      },
+      {
+        constant: false,
+        inputs: [
+          {
+            name: "questName",
+            type: "string"
+          },
+          {
+            name: "a",
+            type: "uint256[2]"
+          },
+          {
+            name: "a_p",
+            type: "uint256[2]"
+          },
+          {
+            name: "b",
+            type: "uint256[2][2]"
+          },
+          {
+            name: "b_p",
+            type: "uint256[2]"
+          },
+          {
+            name: "c",
+            type: "uint256[2]"
+          },
+          {
+            name: "c_p",
+            type: "uint256[2]"
+          },
+          {
+            name: "h",
+            type: "uint256[2]"
+          },
+          {
+            name: "k",
+            type: "uint256[2]"
+          },
+          {
+            name: "input",
+            type: "uint256[1]"
+          }
+        ],
+        name: "checkAndMint",
+        outputs: [],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "function"
+      },
+      {
+        constant: false,
+        inputs: [],
+        name: "abandonCurrentQuest",
+        outputs: [],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "function"
+      }
+    ];
+
+    let controllerContract = await new web3.eth.Contract(
+      controllerContractInterface,
+      controllerContractAddress
+    );
+    controllerContract.setProvider(this.state.loom.loomProvider);
+
+    // getting questEntry object from Quest Register on extdev
+
+    // get quest name
+
+    const questName = window.prompt(
+      "Enter the name of the quest you wish to resolve"
+    );
+
+    // get hash of quest name
+
+    let questNameHash;
+
+    try {
+      questNameHash = await controllerContract.methods
+        .getHash(questName)
+        .call({ from: accounts[1] });
+    } catch (err) {
+      console.log(`Hash of quest name could not be recovered : ${err}`);
+    }
+
+    // get quest entry from quest register
+
+    let questEntry;
+
+    try {
+      questEntry = await controllerContract.methods
+        .questRegister(questNameHash)
+        .call({ from: accounts[1] });
+    } catch (err) {
+      console.log(
+        `Quest Entry could not be recovered from Quest Register : ${err}`
+      );
+    }
+
+    // get questObject from IPFS
+
+    let response;
+    let questObject;
+
+    try {
+      response = await fetch(questEntry.questObjectURLonIPFS);
+      questObject = await response.json();
+    } catch (err) {
+      console.log(`Quest Object could not be recovered from IPFS : ${err}`);
+    }
+
+    // formatting the Paragraph object for readability (NB : not necessary in-game)
+
+    let paragraphsArray = questObject.Paragraphs;
+
+    // create paragraphsMapping out of Paragraphs Array
+
+    let orderedParagraphsArray = [];
+    paragraphsArray.forEach(el => {
+      let indexOfNextParagraph = orderedParagraphsArray.findIndex(
+        elem =>
+          elem.depthNumber > el.depthNumber ||
+          (elem.depthNumber === el.depthNumber &&
+            elem.paragraphNumber > el.paragraphNumber)
+      );
+      if (indexOfNextParagraph === -1) {
+        orderedParagraphsArray.push(el);
+      } else if (indexOfNextParagraph === 0) {
+        orderedParagraphsArray.unshift(el);
+      } else {
+        orderedParagraphsArray.splice(indexOfNextParagraph, 0, el);
+      }
+    });
+
+    console.log(orderedParagraphsArray);
+
+    let paragraphsMapping = [];
+
+    //added for new circuit
+    paragraphsMapping[orderedParagraphsArray.length] = [
+      orderedParagraphsArray.length
+    ];
+    paragraphsMapping[orderedParagraphsArray.length + 1] = [
+      orderedParagraphsArray.length + 1
+    ];
+    // end of addition
+
+    orderedParagraphsArray.forEach((el, index) => {
+      let outcomeArray = [];
+      if (el.nextParagraphs.length > 0) {
+        el.nextParagraphs.forEach(elem => {
+          let indexInParagraphsArray = orderedParagraphsArray.findIndex(
+            parag =>
+              elem.paragraphNumber === parag.paragraphNumber &&
+              elem.depthNumber === parag.depthNumber
+          );
+          outcomeArray.push(indexInParagraphsArray);
+        });
+      } else if (el.paragraphSubTypes.isSuddenDeath === true) {
+        outcomeArray = [orderedParagraphsArray.length];
+      } else if (el.paragraphSubTypes.isVictory === true) {
+        outcomeArray = [orderedParagraphsArray.length + 1];
+      } else window.alert("Error in creating paragraphsMapping.");
+
+      paragraphsMapping[index] = outcomeArray;
+    });
+
+    let paragraphsMappingString = "";
+    paragraphsMapping.forEach(
+      el =>
+        (paragraphsMappingString = paragraphsMappingString.concat(`,[${el}]`))
+    );
+    paragraphsMappingString = paragraphsMappingString.substring(1);
+
+    // getting user input (TBD : in-game format for user input) and converting to expected format for ZKP
+
+    let userInput = window.prompt(
+      `The paragraphs mapping is [${paragraphsMappingString}] Please enter the paragraph plays to test.`
+    );
+    userInput = userInput.toString();
+
+    let movesArrayString = [];
+    movesArrayString = userInput.split(" ");
+    let movesArray = [];
+    movesArrayString.forEach(el => movesArray.push(parseInt(el, 10)));
+
+    let gap = paragraphsMapping.length - movesArray.length;
+
+    for (var j = 0; j < gap; j++) {
+      movesArray.push(0);
+    }
+
+    let inputJSON = { moves: movesArray };
+
+    console.log(inputJSON);
+
+    // fetching cirDef and provingKey from IPFS
+
+    let response2;
+    let cirDef;
+
+    try {
+      response2 = await fetch(questEntry.cirDefURLonIPFS);
+      cirDef = await response2.json();
+    } catch (err) {
+      console.log(
+        `Circuit definition could not be recovered from IPFS : ${err}`
+      );
+    }
+
+    let response3;
+    let provingKey;
+
+    try {
+      response3 = await fetch(questEntry.provingKeyURLonIPFS);
+      provingKey = await response3.json();
+    } catch (err) {
+      console.log(`Proving Key could not be recovered from IPFS : ${err}`);
+    }
+    provingKey = snarkjs.unstringifyBigInts(provingKey);
+
+    // generate proof
+
+    const cir = new snarkjs.Circuit(cirDef);
+
+    let witness;
+
+    try {
+      witness = cir.calculateWitness(inputJSON);
+    } catch (err) {
+      window.alert("Path does not respect constraints !");
+    }
+
+    const protocol = provingKey.protocol;
+    if (!snarkjs[protocol]) throw new Error("Invalid protocol");
+
+    const { proof, publicSignals } = await snarkjs[protocol].genProof(
+      provingKey,
+      witness
+    );
+
+    // create arguments for contract call
+
+    const p256 = function(n) {
+      let nstr = n.toString(16);
+      while (nstr.length < 64) nstr = "0" + nstr;
+      nstr = `"0x${nstr}"`;
+      return nstr;
+    };
+
+    let inputs = "";
+    for (let i = 0; i < publicSignals.length; i++) {
+      if (inputs != "") inputs = inputs + ",";
+      inputs = inputs + p256(publicSignals[i]);
+    }
+
+    let S;
+    if (typeof proof.protocol === "undefined" || proof.protocol == "original") {
+      S =
+        `[${p256(proof.pi_a[0])}, ${p256(proof.pi_a[1])}],` +
+        `[${p256(proof.pi_ap[0])}, ${p256(proof.pi_ap[1])}],` +
+        `[[${p256(proof.pi_b[0][1])}, ${p256(proof.pi_b[0][0])}],[${p256(
+          proof.pi_b[1][1]
+        )}, ${p256(proof.pi_b[1][0])}]],` +
+        `[${p256(proof.pi_bp[0])}, ${p256(proof.pi_bp[1])}],` +
+        `[${p256(proof.pi_c[0])}, ${p256(proof.pi_c[1])}],` +
+        `[${p256(proof.pi_cp[0])}, ${p256(proof.pi_cp[1])}],` +
+        `[${p256(proof.pi_h[0])}, ${p256(proof.pi_h[1])}],` +
+        `[${p256(proof.pi_kp[0])}, ${p256(proof.pi_kp[1])}],` +
+        `[${inputs}]`;
+    } else if (proof.protocol == "groth" || proof.protocol == "kimleeoh") {
+      S =
+        `[${p256(proof.pi_a[0])}, ${p256(proof.pi_a[1])}],` +
+        `[[${p256(proof.pi_b[0][1])}, ${p256(proof.pi_b[0][0])}],[${p256(
+          proof.pi_b[1][1]
+        )}, ${p256(proof.pi_b[1][0])}]],` +
+        `[${p256(proof.pi_c[0])}, ${p256(proof.pi_c[1])}],` +
+        `[${inputs}]`;
+    } else {
+      throw new Error("InvalidProof");
+    }
+
+    console.log(S);
+
+    const ZKParguments = JSON.parse("[" + S + "]");
+
+    console.log(ZKParguments);
+    console.log(...ZKParguments);
+
+    // listen to victory event and call checkAndMint function of controller contract
+
+    controllerContract.once("victory", function(err, result) {
+      if (err) {
+        console.log(`Path check and loot attribution failed : ${err}`); // --> to use in loading screen
+      }
+      console.log("Path check and loot attribution successful !"); // --> to use in loading screen
+    });
+
+    try {
+      await controllerContract.methods
+        .checkAndMint(questName, ...ZKParguments)
+        .send({ from: accounts[1] });
+    } catch (err) {
+      console.log(`checkAndMint transaction failed : ${err}`);
+    }
+  };
+
+  onAbandonQuest = async e => {
+    const web3 = new Web3(this.state.loom.loomProvider);
+    const accounts = await web3.eth.getAccounts();
+
+    // initialize controller contract (deployed on extdev)
+    const controllerContractAddress = window.prompt(
+      "Please enter the address of the Controller Contract"
+    ); // to get from console in truffle contracts deployment script (ubuntu)
+
+    const controllerContractInterface = [
+      {
+        constant: true,
+        inputs: [
+          {
+            name: "",
+            type: "bytes32"
+          }
+        ],
+        name: "questRegister",
+        outputs: [
+          {
+            name: "creator",
+            type: "address"
+          },
+          {
+            name: "identifier",
+            type: "string"
+          },
+          {
+            name: "verifierAddress",
+            type: "address"
+          },
+          {
+            name: "questPrice",
+            type: "uint256"
+          },
+          {
+            name: "questObjectURLonIPFS",
+            type: "string"
+          },
+          {
+            name: "cirDefURLonIPFS",
+            type: "string"
+          },
+          {
+            name: "provingKeyURLonIPFS",
+            type: "string"
+          }
+        ],
+        payable: false,
+        stateMutability: "view",
+        type: "function"
+      },
+      {
+        inputs: [
+          {
+            name: "ERC20input",
+            type: "address"
+          },
+          {
+            name: "ERC721input",
+            type: "address"
+          }
+        ],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "constructor"
+      },
+      {
+        anonymous: false,
+        inputs: [
+          {
+            indexed: false,
+            name: "payer",
+            type: "address"
+          },
+          {
+            indexed: false,
+            name: "recipient",
+            type: "address"
+          },
+          {
+            indexed: false,
+            name: "identifierForQuest",
+            type: "string"
+          }
+        ],
+        name: "paymentForQuest",
+        type: "event"
+      },
+      {
+        anonymous: false,
+        inputs: [
+          {
+            indexed: false,
+            name: "player",
+            type: "address"
+          },
+          {
+            indexed: false,
+            name: "questName",
+            type: "string"
+          },
+          {
+            indexed: false,
+            name: "tokenID",
+            type: "uint256"
+          }
+        ],
+        name: "victory",
+        type: "event"
+      },
+      {
+        anonymous: false,
+        inputs: [
+          {
+            indexed: false,
+            name: "player",
+            type: "address"
+          },
+          {
+            indexed: false,
+            name: "questName",
+            type: "string"
+          }
+        ],
+        name: "incorrectPath",
+        type: "event"
+      },
+      {
+        constant: true,
+        inputs: [
+          {
+            name: "questName",
+            type: "string"
+          }
+        ],
+        name: "getHash",
+        outputs: [
+          {
+            name: "",
+            type: "bytes32"
+          }
+        ],
+        payable: false,
+        stateMutability: "pure",
+        type: "function"
+      },
+      {
+        constant: false,
+        inputs: [
+          {
+            name: "questName",
+            type: "string"
+          },
+          {
+            name: "creatorInput",
+            type: "address"
+          },
+          {
+            name: "identifierInput",
+            type: "string"
+          },
+          {
+            name: "verifierInput",
+            type: "address"
+          },
+          {
+            name: "priceInput",
+            type: "uint256"
+          },
+          {
+            name: "questObjectURLinput",
+            type: "string"
+          },
+          {
+            name: "cirDefURLinput",
+            type: "string"
+          },
+          {
+            name: "provingKeyURLinput",
+            type: "string"
+          }
+        ],
+        name: "addEntry",
+        outputs: [],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "function"
+      },
+      {
+        constant: false,
+        inputs: [
+          {
+            name: "questName",
+            type: "string"
+          }
+        ],
+        name: "playerPayment",
+        outputs: [],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "function"
+      },
+      {
+        constant: false,
+        inputs: [
+          {
+            name: "questName",
+            type: "string"
+          },
+          {
+            name: "a",
+            type: "uint256[2]"
+          },
+          {
+            name: "a_p",
+            type: "uint256[2]"
+          },
+          {
+            name: "b",
+            type: "uint256[2][2]"
+          },
+          {
+            name: "b_p",
+            type: "uint256[2]"
+          },
+          {
+            name: "c",
+            type: "uint256[2]"
+          },
+          {
+            name: "c_p",
+            type: "uint256[2]"
+          },
+          {
+            name: "h",
+            type: "uint256[2]"
+          },
+          {
+            name: "k",
+            type: "uint256[2]"
+          },
+          {
+            name: "input",
+            type: "uint256[1]"
+          }
+        ],
+        name: "checkAndMint",
+        outputs: [],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "function"
+      },
+      {
+        constant: false,
+        inputs: [],
+        name: "abandonCurrentQuest",
+        outputs: [],
+        payable: false,
+        stateMutability: "nonpayable",
+        type: "function"
+      }
+    ];
+
+    let controllerContract = await new web3.eth.Contract(
+      controllerContractInterface,
+      controllerContractAddress
+    );
+    controllerContract.setProvider(this.state.loom.loomProvider);
+
+    // call abandonCurrentQuest function of Quest Controller contract
+
+    try {
+      await controllerContract.methods
+        .abandonCurrentQuest()
+        .send({ from: accounts[1] });
+      console.log(
+        "Current Quest has been abandoned. You may start a new Quest."
+      );
+    } catch (err) {
+      console.log(`abandonCurrentQuest function failed : ${err}`);
+    }
   };
 
   onWithdrawClick = async e => {
@@ -652,6 +2424,30 @@ class QuestsSubmitted extends Component {
                         className="btn btn-secondary btn-sm"
                       >
                         Test Verifier
+                      </button>
+                      <button
+                        data-id={questSubmittedFromScribe.id}
+                        data-title={questSubmittedFromScribe.Title}
+                        onClick={this.onLaunchPayment}
+                        className="btn btn-primary btn-sm"
+                      >
+                        Launch Payment
+                      </button>
+                      <button
+                        data-id={questSubmittedFromScribe.id}
+                        data-title={questSubmittedFromScribe.Title}
+                        onClick={this.onSendSolution}
+                        className="btn btn-primary btn-sm"
+                      >
+                        Send Solution
+                      </button>
+                      <button
+                        data-id={questSubmittedFromScribe.id}
+                        data-title={questSubmittedFromScribe.Title}
+                        onClick={this.onAbandonQuest}
+                        className="btn btn-primary btn-sm"
+                      >
+                        Abandon Quest
                       </button>
                     </td>
                   ) : (

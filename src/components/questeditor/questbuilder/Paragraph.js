@@ -3,6 +3,7 @@ import PropTypes from "prop-types";
 import { compose } from "redux";
 import { connect } from "react-redux";
 import { firestoreConnect } from "react-redux-firebase";
+import ipfsClient from "ipfs-http-client";
 
 import NarrationInput from "./NarrationInput";
 import DialogueInput from "./DialogueInput";
@@ -209,6 +210,7 @@ class Paragraph extends Component {
       };
     } else if (
       paragraphInRegister &&
+      paragraphInRegister.previousParagraphs &&
       paragraphInRegister.previousParagraphs.length === 0 &&
       props.depthNumber !== 0
     ) {
@@ -301,18 +303,8 @@ class Paragraph extends Component {
         el => el.id === id
       );
 
-      if (paragraphAlreadyInDatabase) {
-        (async function() {
-          await firestore.update(
-            { collection: "QuestsInProgress", doc: QuestUnderEdition.id },
-            {
-              Paragraphs: firestore.FieldValue.arrayRemove(
-                paragraphAlreadyInDatabase
-              )
-            }
-          );
-        })();
-      }
+      //Connecting to the ipfs network via infura gateway
+      const ipfs = ipfsClient("ipfs.infura.io", "5001", { protocol: "https" });
 
       // uploading files to Firebase Storage if new files selected, delete existing paragraph files if they are not part of the last save
 
@@ -322,17 +314,13 @@ class Paragraph extends Component {
       // Create a storage reference from our storage service
       const storageRef = storage.ref();
       const paragraphRef = storageRef.child(
-        `${this.props.QuestUnderEdition.id}/Paragraph ${
-          this.props.depthNumber
-        } - ${this.props.paragraphNumber}`
+        `${this.props.QuestUnderEdition.id}/Paragraph ${this.props.depthNumber} - ${this.props.paragraphNumber}`
       );
       //const paragraphList = await paragraphRef.listAll();
 
       if (backgroundImage && backgroundImage !== "already uploaded") {
         let snapshot = await this.props.firebase.uploadFile(
-          `${this.props.QuestUnderEdition.id}/Paragraph ${
-            this.props.depthNumber
-          } - ${this.props.paragraphNumber}`,
+          `${this.props.QuestUnderEdition.id}/Paragraph ${this.props.depthNumber} - ${this.props.paragraphNumber}`,
           backgroundImage,
           null,
           {
@@ -342,24 +330,26 @@ class Paragraph extends Component {
           }
         );
         let gsReference = await storage.refFromURL(
-          `gs://${snapshot.uploadTaskSnapshot.metadata.bucket}/${
-            snapshot.uploadTaskSnapshot.metadata.fullPath
-          }`
+          `gs://${snapshot.uploadTaskSnapshot.metadata.bucket}/${snapshot.uploadTaskSnapshot.metadata.fullPath}`
         );
         let backgroundImageURL = await gsReference.getDownloadURL();
         paragraphData.backgroundImageURL = backgroundImageURL;
-      } /*else if (
-      !backgroundImage &&
-      paragraphList.items.find(el => el.fullPath.includes("backgroundImage"))
-    ) {
-      paragraphRef.child("backgroundImage").delete();
-    }*/
+
+        // upload to IPFS
+        const resultsBackgroundImage = await ipfs.add(backgroundImage);
+        const hashBackgroundImage = resultsBackgroundImage[0].hash;
+        const backgroundImageURLonIPFS = `https://gateway.ipfs.io/ipfs/${hashBackgroundImage}`;
+        paragraphData.backgroundImageURLonIPFS = backgroundImageURLonIPFS;
+      } else if (backgroundImage && backgroundImage === "already uploaded") {
+        paragraphData.backgroundImageURL =
+          paragraphAlreadyInDatabase.backgroundImageURL;
+        paragraphData.backgroundImageURLonIPFS =
+          paragraphAlreadyInDatabase.backgroundImageURLonIPFS;
+      }
 
       if (startingSound && startingSound !== "already uploaded") {
         let snapshot = await this.props.firebase.uploadFile(
-          `${this.props.QuestUnderEdition.id}/Paragraph ${
-            this.props.depthNumber
-          } - ${this.props.paragraphNumber}`,
+          `${this.props.QuestUnderEdition.id}/Paragraph ${this.props.depthNumber} - ${this.props.paragraphNumber}`,
           startingSound,
           null,
           {
@@ -369,19 +359,23 @@ class Paragraph extends Component {
           }
         );
         let gsReference = await storage.refFromURL(
-          `gs://${snapshot.uploadTaskSnapshot.metadata.bucket}/${
-            snapshot.uploadTaskSnapshot.metadata.fullPath
-          }`
+          `gs://${snapshot.uploadTaskSnapshot.metadata.bucket}/${snapshot.uploadTaskSnapshot.metadata.fullPath}`
         );
 
         let startingSoundURL = await gsReference.getDownloadURL();
         paragraphData.startingSoundURL = startingSoundURL;
-      } /*else if (
-      !startingSound &&
-      paragraphList.items.find(el => el.fullPath.includes("startingSound"))
-    ) {
-      paragraphRef.child("startingSound").delete();
-    }*/
+
+        // upload on IPFS
+        const resultsStartingSound = await ipfs.add(startingSound);
+        const hashStartingSound = resultsStartingSound[0].hash;
+        const startingSoundURLonIPFS = `https://gateway.ipfs.io/ipfs/${hashStartingSound}`;
+        paragraphData.startingSoundURLonIPFS = startingSoundURLonIPFS;
+      } else if (startingSound && startingSound === "already uploaded") {
+        paragraphData.startingSoundURL =
+          paragraphAlreadyInDatabase.startingSoundURL;
+        paragraphData.startingSoundURLonIPFS =
+          paragraphAlreadyInDatabase.startingSoundURLonIPFS;
+      }
 
       let outcomeSoundsFiles = await paragraphRef
         .child("Outcomes")
@@ -392,9 +386,7 @@ class Paragraph extends Component {
       async function processOutcomeSounds(outcomeSounds) {
         async function processOutcomeSound(outcomeSound) {
           let snapshot = await this.props.firebase.uploadFile(
-            `${this.props.QuestUnderEdition.id}/Paragraph ${
-              this.props.depthNumber
-            } - ${this.props.paragraphNumber}/Outcomes/Sounds`,
+            `${this.props.QuestUnderEdition.id}/Paragraph ${this.props.depthNumber} - ${this.props.paragraphNumber}/Outcomes/Sounds`,
             outcomeSound.outcomeSound,
             null,
             {
@@ -406,13 +398,11 @@ class Paragraph extends Component {
             }
           );
           let gsReference = await storage.refFromURL(
-            `gs://${snapshot.uploadTaskSnapshot.metadata.bucket}/${
-              snapshot.uploadTaskSnapshot.metadata.fullPath
-            }`
+            `gs://${snapshot.uploadTaskSnapshot.metadata.bucket}/${snapshot.uploadTaskSnapshot.metadata.fullPath}`
           );
           let outcomeSoundURL = await gsReference.getDownloadURL();
           paragraphData.nextParagraphs[
-            outcomeSounds.indexOf(outcomeSound)
+            outcomeSound.rankInNextParagraphs
           ].outcomeSoundURL = outcomeSoundURL;
         }
         let boundedprocessOutcomeSound = processOutcomeSound.bind(this);
@@ -430,30 +420,38 @@ class Paragraph extends Component {
         for (const el of outcomeSoundsFiles.items) {
           await el.delete();
         }
-      } else if (
-        outcomeSoundArray &&
-        outcomeSoundArray.length > 0 &&
-        outcomeSoundsFiles.items.length > outcomeSoundArray.length
-      ) {
+      } else if (outcomeSoundArray && outcomeSoundArray.length > 0) {
         //clear all
         for (const el of outcomeSoundsFiles.items) {
           await el.delete();
         }
         // upload all including outcome sounds with a counter of 0
         await boundedprocessOutcomeSounds(outcomeSoundArray);
-      } else if (
-        outcomeSoundArray &&
-        outcomeSoundArray.length > 0 &&
-        outcomeSoundArray.some(el => el.outcomeSoundCounter === 1)
-      ) {
-        //filter outcome sounds with a counter of 1
-        let outcomeSoundsToUpdate = outcomeSoundArray.filter(
-          el => el.outcomeSoundCounter === 1
-        );
-        // upload only these outcome sounds
-        await boundedprocessOutcomeSounds(outcomeSoundsToUpdate);
       }
 
+      // upload on IPFS
+      if (outcomeSoundArray) {
+        for (const outcomeSound of outcomeSoundArray) {
+          if (outcomeSound.outcomeSoundCounter === 1) {
+            const resultsOutcomeSound = await ipfs.add(
+              outcomeSound.outcomeSound
+            );
+            const hashOutcomeSound = resultsOutcomeSound[0].hash;
+            const outcomeSoundURLonIPFS = `https://gateway.ipfs.io/ipfs/${hashOutcomeSound}`;
+
+            paragraphData.nextParagraphs[
+              outcomeSound.rankInNextParagraphs
+            ].outcomeSoundURLonIPFS = outcomeSoundURLonIPFS;
+          } else {
+            paragraphData.nextParagraphs[
+              outcomeSound.rankInNextParagraphs
+            ].outcomeSoundURLonIPFS =
+              paragraphAlreadyInDatabase.nextParagraphs[
+                outcomeSound.rankInNextParagraphs
+              ].outcomeSoundURLonIPFS;
+          }
+        }
+      }
       let outcomeImagesFiles = await paragraphRef
         .child("Outcomes")
         .child("Images")
@@ -463,9 +461,7 @@ class Paragraph extends Component {
       async function processOutcomeImages(outcomeImages) {
         async function processOutcomeImage(outcomeImage) {
           let snapshot = await this.props.firebase.uploadFile(
-            `${this.props.QuestUnderEdition.id}/Paragraph ${
-              this.props.depthNumber
-            } - ${this.props.paragraphNumber}/Outcomes/Images`,
+            `${this.props.QuestUnderEdition.id}/Paragraph ${this.props.depthNumber} - ${this.props.paragraphNumber}/Outcomes/Images`,
             outcomeImage.outcomeImage,
             null,
             {
@@ -477,9 +473,7 @@ class Paragraph extends Component {
             }
           );
           let gsReference = await storage.refFromURL(
-            `gs://${snapshot.uploadTaskSnapshot.metadata.bucket}/${
-              snapshot.uploadTaskSnapshot.metadata.fullPath
-            }`
+            `gs://${snapshot.uploadTaskSnapshot.metadata.bucket}/${snapshot.uploadTaskSnapshot.metadata.fullPath}`
           );
           let outcomeImageURL = await gsReference.getDownloadURL();
           paragraphData.nextParagraphs[
@@ -501,30 +495,55 @@ class Paragraph extends Component {
         for (const el of outcomeImagesFiles.items) {
           await el.delete();
         }
-      } else if (
-        outcomeImageArray &&
-        outcomeImageArray.length > 0 &&
-        outcomeImagesFiles.items.length > outcomeImageArray.length
-      ) {
+      } else if (outcomeImageArray && outcomeImageArray.length > 0) {
         //clear all
         for (const el of outcomeImagesFiles.items) {
           await el.delete();
         }
         // upload all including outcome images with a counter of 0
         await boundedprocessOutcomeImages(outcomeImageArray);
-      } else if (
-        outcomeImageArray &&
-        outcomeImageArray.length > 0 &&
-        outcomeImageArray.some(el => el.outcomeImageCounter === 1)
-      ) {
-        //filter outcome images with a counter of 1
-        let outcomeImagesToUpdate = outcomeImageArray.filter(
-          el => el.outcomeImageCounter === 1
-        );
-        // upload only these outcome images
-        await boundedprocessOutcomeImages(outcomeImagesToUpdate);
       }
 
+      // upload on IPFS
+      if (outcomeImageArray) {
+        for (const outcomeImage of outcomeImageArray) {
+          if (outcomeImage.outcomeImageCounter === 1) {
+            const resultsOutcomeImage = await ipfs.add(
+              outcomeImage.outcomeImage
+            );
+            const hashOutcomeImage = resultsOutcomeImage[0].hash;
+            const outcomeImageURLonIPFS = `https://gateway.ipfs.io/ipfs/${hashOutcomeImage}`;
+
+            paragraphData.nextParagraphs[
+              outcomeImage.rankInNextParagraphs
+            ].outcomeImageURLonIPFS = outcomeImageURLonIPFS;
+          } else {
+            paragraphData.nextParagraphs[
+              outcomeImage.rankInNextParagraphs
+            ].outcomeImageURLonIPFS =
+              paragraphAlreadyInDatabase.nextParagraphs[
+                outcomeImage.rankInNextParagraphs
+              ].outcomeImageURLonIPFS;
+          }
+        }
+      }
+
+      console.log(paragraphData);
+      // removing existing entry in Firestore to avoid duplicates
+      if (paragraphAlreadyInDatabase) {
+        (async function() {
+          await firestore.update(
+            { collection: "QuestsInProgress", doc: QuestUnderEdition.id },
+            {
+              Paragraphs: firestore.FieldValue.arrayRemove(
+                paragraphAlreadyInDatabase
+              )
+            }
+          );
+        })();
+      }
+
+      // update Quest information and add Paragraph data to Firestore
       await firestore.update(
         { collection: "QuestsInProgress", doc: QuestUnderEdition.id },
         {

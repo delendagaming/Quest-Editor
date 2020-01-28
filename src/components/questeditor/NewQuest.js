@@ -19,13 +19,15 @@ class NewQuest extends Component {
     var ScribeID = user.uid;
     var ScribeName = user.displayName;
     var ScribeEmail = user.email;
+    var ScribeLoomAddress = user.photoURL;
 
     await this.setState({
       CreationDate: curday(),
       LastEditDate: curday(),
       ScribeID,
       ScribeName,
-      ScribeEmail
+      ScribeEmail,
+      ScribeLoomAddress
     });
     const newQuest = this.state;
     const { firestore } = this.props;

@@ -275,6 +275,7 @@ class QuestBuilder extends Component {
               <div
                 className="level-depth-separation"
                 style={{ textAlign: "center" }}
+                onClick={this.onSaveUnderEdition}
               >
                 <h5>Depth Level 0</h5>
               </div>

@@ -133,14 +133,13 @@ class QuestsInProgress extends Component {
     } else {
       if (
         window.confirm(
-          `Are you sure you want to submit the Quest '${
-            questInProgress.Title
-          }'?`
+          `Are you sure you want to submit the Quest '${questInProgress.Title}'?`
         )
       ) {
         questInProgress.Status = "Submitted";
         questInProgress.SubmissionDate = curday();
 
+        // Adding submitted quest to QuestsSubmitted collection in firestore and update new ID
         const result = await this.props.firestore.add(
           { collection: "QuestsSubmitted" },
           questInProgress
@@ -151,10 +150,12 @@ class QuestsInProgress extends Component {
             id: result.id
           }
         );
+        // Delete from QuestsInProgress collection in firestore
         await this.props.firestore.delete({
           collection: "QuestsInProgress",
           doc: id
         });
+
         window.alert(
           `Your Quest has been properly submitted and will now be reviewed by the Team.`
         );
@@ -209,9 +210,7 @@ class QuestsInProgress extends Component {
                   <td>{questInProgressFromScribe.NbParagraphs}</td>
                   <td>
                     <Link
-                      to={`/questeditor/details/${
-                        questInProgressFromScribe.id
-                      }`}
+                      to={`/questeditor/details/${questInProgressFromScribe.id}`}
                       className="btn btn-secondary btn-sm"
                     >
                       <i className="fas fa-arrow-circle-right" /> Edit

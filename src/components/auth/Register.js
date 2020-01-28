@@ -4,6 +4,7 @@ import { connect } from "react-redux";
 import { firebaseConnect } from "react-redux-firebase";
 import { notifyUser } from "../../actions/notifyActions";
 import Alert from "../layout/Alert";
+import { CryptoUtils, LocalAddress } from "loom-js";
 
 import React, { Component } from "react";
 
@@ -19,13 +20,26 @@ class Register extends Component {
     e.preventDefault();
     const { firebase, notifyUser } = this.props;
     const { email, password, accountName } = this.state;
+
+    // Generate random private key and associated address for user
+
+    const privateKeyLoom = CryptoUtils.generatePrivateKey();
+    const loomPublicKey = CryptoUtils.publicKeyFromPrivateKey(privateKeyLoom);
+    const loomAddress = LocalAddress.fromPublicKey(loomPublicKey).toString();
+
+    console.log(loomAddress);
+
     //Register with firebase
     await firebase
       .createUser({ email, password })
       .catch(err => notifyUser("That User Already Exists", "error-register"));
     var user = await firebase.auth().currentUser;
     if (user) {
-      await user.updateProfile({ displayName: accountName });
+      await user.updateProfile({
+        displayName: accountName,
+        photoURL: loomAddress
+      });
+      console.log(user);
       this.props.history.push("/questeditor/menu/");
     }
   };
