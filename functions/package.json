@@ -15,8 +15,8 @@
   "dependencies": {
     "circom": "0.0.30",
     "circomlib": "0.0.10",
-    "firebase-admin": "^8.0.0",
-    "firebase-functions": "^3.1.0",
+    "firebase-admin": "^11.4.1",
+    "firebase-functions": "^3.24.1",
     "solc": "^0.4.17"
   },
   "devDependencies": {
